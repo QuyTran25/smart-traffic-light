@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- File định tuyến xe -->
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+
+    <!-- =====================================================
+         1️⃣ ĐỊNH NGHĨA CÁC LOẠI PHƯƠNG TIỆN
+         ===================================================== -->
+
+    <!-- Xe máy (80%) -->
+    <vType id="motorcycle" vClass="motorcycle"
+           length="2.0" width="0.8" minGap="0.2"
+           accel="2.0" decel="4.5" sigma="0.8"
+           maxSpeed="20" speedFactor="1.2"
+           color="1,0,0"/>
+
+    <!-- Ô tô (10%) -->
+    <vType id="car" vClass="passenger"
+           length="4.5" width="1.8" minGap="2.5"
+           accel="2.6" decel="4.5" sigma="0.5"
+           maxSpeed="25" speedFactor="1.0"
+           color="0,0,1"/>
+
+    <!-- Xe buýt (7%) -->
+    <vType id="bus" vClass="bus"
+           length="10" width="2.5" minGap="3.0"
+           accel="1.2" decel="4.0" sigma="0.4"
+           maxSpeed="18" speedFactor="0.9"
+           color="0,1,0"/>
+
+    <!-- Xe ưu tiên (3%) -->
+    <vType id="priority" vClass="emergency"
+           length="4.5" width="1.8" minGap="2.0"
+           accel="3.0" decel="4.5" sigma="0.3"
+           maxSpeed="30" speedFactor="1.3"
+           color="1,1,0"/>
+
+    <!-- =====================================================
+         2️⃣ CÁC LUỒNG XE (FLOW) – PHÂN THEO HƯỚNG
+         ===================================================== -->
+
+    <!-- ===== E0 → E1 ===== -->
+    <flow id="moto_E1" type="motorcycle" from="E0" to="E1" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E1"  type="car"         from="E0" to="E1" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E1"  type="bus"         from="E0" to="E1" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E1"  type="priority"    from="E0" to="E1" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== E0 → E2 ===== -->
+    <flow id="moto_E2" type="motorcycle" from="E0" to="E2" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E2"  type="car"         from="E0" to="E2" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E2"  type="bus"         from="E0" to="E2" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E2"  type="priority"    from="E0" to="E2" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== E0 → E4 ===== -->
+    <flow id="moto_E4" type="motorcycle" from="E0" to="E4" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E4"  type="car"         from="E0" to="E4" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E4"  type="bus"         from="E0" to="E4" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E4"  type="priority"    from="E0" to="E4" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== E0 → E5 ===== -->
+    <flow id="moto_E5" type="motorcycle" from="E0" to="E5" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E5"  type="car"         from="E0" to="E5" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E5"  type="bus"         from="E0" to="E5" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E5"  type="priority"    from="E0" to="E5" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== E0 → E6 ===== -->
+    <flow id="moto_E6" type="motorcycle" from="E0" to="E6" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E6"  type="car"         from="E0" to="E6" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E6"  type="bus"         from="E0" to="E6" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E6"  type="priority"    from="E0" to="E6" begin="0" end="200" vehsPerHour="18"/>
+
+
+
+    <!-- ===== -E1 → -E0 ===== -->
+    <flow id="moto_E7" type="motorcycle" from="-E1" to="-E0" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E7"  type="car"         from="-E1" to="-E0" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E7"  type="bus"         from="-E1" to="-E0" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E7"  type="priority"    from="-E1" to="-E0" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E1 → E2 ===== -->
+    <flow id="moto_E8" type="motorcycle" from="-E1" to="E2" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E8"  type="car"         from="-E1" to="E2" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E8"  type="bus"         from="-E1" to="E2" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E8"  type="priority"    from="-E1" to="E2" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E1 → E4 ===== -->
+    <flow id="moto_E9" type="motorcycle" from="-E1" to="E4" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E9"  type="car"         from="-E1" to="E4" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E9"  type="bus"         from="-E1" to="E4" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E9"  type="priority"    from="-E1" to="E4" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E1 → E5 ===== -->
+    <flow id="moto_E10" type="motorcycle" from="-E1" to="E5" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E10"  type="car"         from="-E1" to="E5" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E10"  type="bus"         from="-E1" to="E5" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E10"  type="priority"    from="-E1" to="E5" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E1 → E6 ===== -->
+    <flow id="moto_E11" type="motorcycle" from="-E1" to="E6" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E11"  type="car"         from="-E1" to="E6" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E11"  type="bus"         from="-E1" to="E6" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E11"  type="priority"    from="-E1" to="E6" begin="0" end="200" vehsPerHour="18"/>
+
+
+
+    <!-- ===== -E2 → -E0 ===== -->
+    <flow id="moto_E12" type="motorcycle" from="-E2" to="-E0" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E12"  type="car"         from="-E2" to="-E0" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E12"  type="bus"         from="-E2" to="-E0" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E12"  type="priority"    from="-E2" to="-E0" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E2 → E1 ===== -->
+    <flow id="moto_E13" type="motorcycle" from="-E2" to="E1" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E13"  type="car"         from="-E2" to="E1" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E13"  type="bus"         from="-E2" to="E1" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E13"  type="priority"    from="-E2" to="E1" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E2 → E4 ===== -->
+    <flow id="moto_E14" type="motorcycle" from="-E2" to="E4" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E14"  type="car"         from="-E2" to="E4" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E14"  type="bus"         from="-E2" to="E4" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E14"  type="priority"    from="-E2" to="E4" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E2 → E5 ===== -->
+    <flow id="moto_E15" type="motorcycle" from="-E2" to="E5" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E15"  type="car"         from="-E2" to="E5" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E15"  type="bus"         from="-E2" to="E5" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E15"  type="priority"    from="-E2" to="E5" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E2 → E6 ===== -->
+    <flow id="moto_E16" type="motorcycle" from="-E2" to="E6" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E16"  type="car"         from="-E2" to="E6" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E16"  type="bus"         from="-E2" to="E6" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E16"  type="priority"    from="-E2" to="E6" begin="0" end="200" vehsPerHour="18"/>
+
+
+
+    <!-- ===== -E5 → -E0 ===== -->
+    <flow id="moto_E17" type="motorcycle" from="-E5" to="-E0" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E17"  type="car"         from="-E5" to="-E0" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E17"  type="bus"         from="-E5" to="-E0" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E17"  type="priority"    from="-E5" to="-E0" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E5 → E1 ===== -->
+    <flow id="moto_E21" type="motorcycle" from="-E5" to="E1" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E21"  type="car"         from="-E5" to="E1" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E21"  type="bus"         from="-E5" to="E1" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E21"  type="priority"    from="-E5" to="E1" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E5 → E4 ===== -->
+    <flow id="moto_E18" type="motorcycle" from="-E5" to="E4" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E18"  type="car"         from="-E5" to="E4" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E18"  type="bus"         from="-E5" to="E4" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E18"  type="priority"    from="-E5" to="E4" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E5 → E2 ===== -->
+    <flow id="moto_E19" type="motorcycle" from="-E5" to="E2" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E19"  type="car"         from="-E5" to="E2" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E19"  type="bus"         from="-E5" to="E2" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E19"  type="priority"    from="-E5" to="E2" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E5 → E6 ===== -->
+    <flow id="moto_E20" type="motorcycle" from="-E5" to="E6" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E20"  type="car"         from="-E5" to="E6" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E20"  type="bus"         from="-E5" to="E6" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E20"  type="priority"    from="-E5" to="E6" begin="0" end="200" vehsPerHour="18"/>
+
+
+
+    <!-- ===== -E6 → -E0 ===== -->
+    <flow id="moto_E22" type="motorcycle" from="-E6" to="-E0" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E22"  type="car"         from="-E6" to="-E0" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E22"  type="bus"         from="-E6" to="-E0" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E22"  type="priority"    from="-E6" to="-E0" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E6 → E1 ===== -->
+    <flow id="moto_E23" type="motorcycle" from="-E6" to="E1" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E23"  type="car"         from="-E6" to="E1" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E23"  type="bus"         from="-E6" to="E1" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E23"  type="priority"    from="-E6" to="E1" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E6 → E4 ===== -->
+    <flow id="moto_E24" type="motorcycle" from="-E6" to="E4" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E24"  type="car"         from="-E6" to="E4" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E24"  type="bus"         from="-E6" to="E4" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E24"  type="priority"    from="-E6" to="E4" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E6 → E2 ===== -->
+    <flow id="moto_E26" type="motorcycle" from="-E6" to="E2" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E26"  type="car"         from="-E6" to="E2" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E26"  type="bus"         from="-E6" to="E2" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E26"  type="priority"    from="-E6" to="E2" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E6 → E5 ===== -->
+    <flow id="moto_E25" type="motorcycle" from="-E6" to="E5" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E25"  type="car"         from="-E6" to="E5" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E25"  type="bus"         from="-E6" to="E5" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E25"  type="priority"    from="-E6" to="E5" begin="0" end="200" vehsPerHour="18"/>
+
+
+
+    <!-- ===== -E4 → -E0 ===== -->
+    <flow id="moto_E27" type="motorcycle" from="-E4" to="-E0" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E27"  type="car"         from="-E4" to="-E0" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E27"  type="bus"         from="-E4" to="-E0" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E27"  type="priority"    from="-E4" to="-E0" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E4 → E1 ===== -->
+    <flow id="moto_E28" type="motorcycle" from="-E4" to="E1" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E28"  type="car"         from="-E4" to="E1" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E28"  type="bus"         from="-E4" to="E1" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E28"  type="priority"    from="-E4" to="E1" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E4 → E6 ===== -->
+    <flow id="moto_E29" type="motorcycle" from="-E4" to="E6" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E29"  type="car"         from="-E4" to="E6" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E29"  type="bus"         from="-E4" to="E6" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E29"  type="priority"    from="-E4" to="E6" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E4 → E2 ===== -->
+    <flow id="moto_E30" type="motorcycle" from="-E4" to="E2" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E30"  type="car"         from="-E4" to="E2" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E30"  type="bus"         from="-E4" to="E2" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E30"  type="priority"    from="-E4" to="E2" begin="0" end="200" vehsPerHour="18"/>
+
+    <!-- ===== -E4 → E5 ===== -->
+    <flow id="moto_E31" type="motorcycle" from="-E4" to="E5" begin="0" end="200" vehsPerHour="480"/>
+    <flow id="car_E31"  type="car"         from="-E4" to="E5" begin="0" end="200" vehsPerHour="60"/>
+    <flow id="bus_E31"  type="bus"         from="-E4" to="E5" begin="0" end="200" vehsPerHour="42"/>
+    <flow id="pri_E31"  type="priority"    from="-E4" to="E5" begin="0" end="200" vehsPerHour="18"/>
+</routes>
