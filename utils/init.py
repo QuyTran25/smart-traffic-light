@@ -1,1 +1,0 @@
-# Hàm tiện ích, xử lý dữ liệu chung

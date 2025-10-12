@@ -22,6 +22,7 @@ def test_sumo():
     # Đường dẫn đến file config
     config_path = os.path.join(
         os.path.dirname(__file__), 
+        'data',
         'sumo', 
         'test2.sumocfg'
     )
@@ -69,7 +70,7 @@ def test_sumo():
         print("\n❌ Không thể khởi động SUMO!")
         print("💡 Kiểm tra:")
         print("   - SUMO đã được cài đặt chưa?")
-        print("   - File test2.net.xml và test2.rou.xml có trong thư mục sumo/ chưa?")
+        print("   - File test2.net.xml và test2.rou.xml có trong thư mục data/sumo/ chưa?")
         return False
 
 if __name__ == "__main__":

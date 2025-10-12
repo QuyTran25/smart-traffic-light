@@ -1,1 +1,0 @@
-# quan ly tuowng tac voi SUMO
