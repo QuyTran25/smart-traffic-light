@@ -50,7 +50,7 @@ def test_sumo():
             # Giữ chương trình chạy
             import traci
             step = 0
-            while step < 100:  # Chạy 100 bước test
+            while step < 300:  # Chạy 100 bước test
                 traci.simulationStep()
                 step += 1
                 if step % 10 == 0:
