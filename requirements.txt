@@ -1,1 +1,16 @@
 # Danh sách thư viện Python
+
+# SUMO - Traffic Simulation
+# Note: SUMO phải được cài đặt riêng (https://sumo.dlr.de/docs/Installing/index.html)
+# TraCI API được cài cùng với SUMO
+
+# GUI Framework
+customtkinter>=5.2.0
+Pillow>=10.0.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Visualization (optional)
+matplotlib>=3.7.0
