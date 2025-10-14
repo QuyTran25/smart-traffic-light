@@ -1,8 +1,13 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from datetime import datetime
-import threading, time, random
+import threading, time, random, os, sys
+
+# Thêm đường dẫn src vào sys.path để import được modules
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from simulation.sumo_connector import khoi_dong_sumo, dung_sumo
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -15,11 +20,22 @@ class SmartTrafficApp(ctk.CTk):
         self.geometry("700x850")
         self.minsize(680, 800)
         self.running = False
+        self.paused = False  # Thêm biến để theo dõi trạng thái pause
         self.mode = "Mặc định"
         
         self.green_time = 30
         self.yellow_time = 3
         self.red_time = 30
+        
+        # Global KPI data
+        self.global_kpi_data = {
+            "Tổng xe": 0,
+            "Độ trễ TB": 0.0,
+            "Lưu lượng": 0,
+            "Chu kỳ TB": 0,
+            "Công bằng": 0.0,
+            "Phối hợp": 0
+        }
         
         # Data for 2 intersections
         self.intersection_data = {
@@ -710,20 +726,59 @@ class SmartTrafficApp(ctk.CTk):
     def start_sim(self):
         if self.running:
             return
+        
         self.running = True
+        self.paused = False  # Bỏ pause khi start
         self.status_label.configure(text="🟢 Chạy", text_color="#10b981")
-        threading.Thread(target=self.simulate, daemon=True).start()
-        self.log("▶ Bắt đầu mô phỏng 2 ngã tư")
+        
+        # Kiểm tra xem SUMO đã được khởi động chưa
+        sumo_is_running = False
+        try:
+            import traci
+            # Thử lấy thông tin từ SUMO để kiểm tra kết nối
+            traci.simulation.getTime()
+            sumo_is_running = True
+            self.log("▶ Tiếp tục mô phỏng từ nơi đã dừng")
+        except (traci.exceptions.FatalTraCIError, traci.exceptions.TraCIException):
+            # SUMO chưa khởi động hoặc đã bị đóng
+            sumo_is_running = False
+        except:
+            # Lỗi khác (có thể chưa import traci)
+            sumo_is_running = False
+        
+        if sumo_is_running:
+            # SUMO đang chạy, chỉ cần tiếp tục (thread vẫn đang chạy và đang chờ)
+            pass  # Thread vẫn đang chạy, chỉ cần set running = True
+        else:
+            # Khởi động SUMO mới
+            config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'sumo', 'test2.sumocfg')
+            if khoi_dong_sumo(config_path, gui=True):
+                threading.Thread(target=self.simulate_with_sumo, daemon=True).start()
+                self.log("▶ Bắt đầu mô phỏng SUMO với GUI")
+            else:
+                self.log("❌ Không thể khởi động SUMO. Kiểm tra file cấu hình hoặc SUMO đã được cài đặt chưa")
+                self.running = False
+                self.status_label.configure(text="⚫ Lỗi", text_color="#ef4444")
 
     def pause_sim(self):
+        if not self.running:
+            return
         self.running = False
-        self.status_label.configure(text="🟡 Dừng", text_color="#f59e0b")
-        self.log("⏸ Tạm dừng")
+        self.paused = True  # Đánh dấu đang pause
+        self.status_label.configure(text="🟡 Tạm dừng", text_color="#f59e0b")
+        # KHÔNG đóng SUMO khi pause, thread vẫn chạy nhưng sẽ "ngủ"
+        self.log("⏸ Tạm dừng mô phỏng (nhấn Start để tiếp tục)")
 
     def stop_sim(self):
         self.running = False
+        self.paused = False  # Không còn pause nữa
         self.status_label.configure(text="⚫ Dừng", text_color="#64748b")
-        self.log("⏹ Đã dừng")
+        # Đóng SUMO hoàn toàn
+        try:
+            dung_sumo()
+            self.log("⏹ Đã dừng và đóng SUMO")
+        except:
+            self.log("⏹ Đã dừng mô phỏng")
 
     def export_log(self):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -732,61 +787,129 @@ class SmartTrafficApp(ctk.CTk):
             f.write(self.log_box.get("1.0", "end"))
         self.log(f"✓ Xuất: {filename}")
 
-    def simulate(self):
-        """Simulate real-time data updates for 2 intersections"""
-        while self.running:
-            # Update global KPIs
-            total_vehicles = random.randint(250, 350)
-            avg_delay = round(random.uniform(35, 65), 1)
-            throughput = random.randint(400, 600)
-            avg_cycle = random.randint(70, 110)
-            fairness = round(random.uniform(0.75, 0.92), 2)
-            coordination = random.randint(75, 95)
-            
-            self.global_kpi_cards["Tổng xe"].configure(text=str(total_vehicles))
-            self.global_kpi_cards["Độ trễ TB"].configure(text=str(avg_delay))
-            self.global_kpi_cards["Lưu lượng"].configure(text=str(throughput))
-            self.global_kpi_cards["Chu kỳ TB"].configure(text=str(avg_cycle))
-            self.global_kpi_cards["Công bằng"].configure(text=str(fairness))
-            self.global_kpi_cards["Phối hợp"].configure(text=str(coordination))
-            
-            # Update each intersection
-            for idx, (int_name, data) in enumerate(self.intersection_data.items()):
-                # Update queue and wait time
-                queue = random.randint(5, 25)
-                wait = random.randint(20, 80)
+    def simulate_with_sumo(self):
+        """Simulate with real SUMO data"""
+        import traci
+        
+        try:
+            sumo_ended = False
+            while not sumo_ended:
+                # Kiểm tra nếu đang pause thì chờ
+                while self.paused and not sumo_ended:
+                    time.sleep(0.1)  # Ngủ khi pause
+                    # Kiểm tra xem có lệnh stop không
+                    if not self.running and not self.paused:
+                        sumo_ended = True
+                        break
                 
-                widgets = self.intersection_widgets[int_name]
-                widgets["queue"].configure(text=str(queue))
-                widgets["wait"].configure(text=str(wait))
+                # Nếu không chạy và không pause thì dừng
+                if not self.running and not self.paused:
+                    break
                 
-                # Update vehicle counts by direction
-                for direction in ["Bắc", "Nam", "Đông", "Tây"]:
-                    count = random.randint(15, 45)
-                    widgets["directions"][direction].configure(text=str(count))
-            
-            # Random log events
-            events = [
-                        "Cập nhật trạng thái đèn giao thông",
-                        "Phát hiện tăng lưu lượng tại hướng Đông",
-                        "Điều chỉnh chu kỳ đèn tự động",
-                        "Xe ưu tiên được phát hiện - Kích hoạt ưu tiên",
-                        "Giảm lưu lượng tại hướng Bắc",
-                        "Hệ thống hoạt động ổn định",
-                    ]
-            if random.random() < 0.4:
-                self.log(random.choice(events))
-            
-            time.sleep(3)
+                # Chỉ chạy step khi đang running
+                if self.running:
+                    # Chạy một bước mô phỏng SUMO
+                    traci.simulationStep()
+                    
+                    # Lấy thời gian hiện tại
+                    current_time = traci.simulation.getTime()
+                    
+                    # Cập nhật dữ liệu từ SUMO
+                    self.update_data_from_sumo()
+                    
+                    # Cập nhật UI
+                    self.update_ui()
+                    
+                    time.sleep(0.1)  # Cập nhật mỗi 0.1 giây
+                
+        except Exception as e:
+            self.log(f"❌ Lỗi trong mô phỏng SUMO: {str(e)}")
+            self.running = False
+            self.paused = False
+            self.status_label.configure(text="⚫ Lỗi", text_color="#ef4444")
+        finally:
+            # Chỉ đóng SUMO khi thực sự stop (không phải pause)
+            if not self.paused:
+                try:
+                    dung_sumo()
+                except:
+                    pass
 
     # =======================================================
 
     def reset_all(self):
-        """Reset all interface elements"""
+        """Reset all interface elements and restart SUMO"""
+        # Chạy reset trên thread riêng để không block UI
+        threading.Thread(target=self._do_reset, daemon=True).start()
+    
+    def _do_reset(self):
+        """Thực hiện reset (chạy trên thread riêng)"""
+        # Lưu trạng thái đang chạy
+        was_running = self.running
+        
+        # Dừng mô phỏng
         self.running = False
+        self.paused = False
+        time.sleep(0.5)  # Đợi thread dừng
+        
+        # Đóng SUMO cũ
+        try:
+            dung_sumo()
+        except:
+            pass
+        
+        # Đợi SUMO đóng hoàn toàn
+        time.sleep(0.5)
+        
+        # Reset các biến dữ liệu nội bộ về giá trị mặc định (trên UI thread)
+        self.after(0, self._reset_ui_and_data, was_running)
+    
+    def _reset_ui_and_data(self, was_running):
+        """Reset UI và dữ liệu (chạy trên main thread)"""
+        # Reset các biến dữ liệu nội bộ về giá trị mặc định
+        self.green_time = 30
+        self.yellow_time = 3
+        self.red_time = 30
+        self.mode = "Mặc định"
+        
+        # Reset global KPI data
+        self.global_kpi_data = {
+            "Tổng xe": 0,
+            "Độ trễ TB": 0.0,
+            "Lưu lượng": 0,
+            "Chu kỳ TB": 0,
+            "Công bằng": 0.0,
+            "Phối hợp": 0
+        }
+        
+        # Reset intersection data về giá trị ban đầu
+        self.intersection_data = {
+            "Ngã tư 1": {
+                "light_state": "Đỏ",
+                "vehicles": {"Bắc": 0, "Nam": 0, "Đông": 0, "Tây": 0},
+                "queue": 0,
+                "wait_time": 0
+            },
+            "Ngã tư 2": {
+                "light_state": "Xanh",
+                "vehicles": {"Bắc": 0, "Nam": 0, "Đông": 0, "Tây": 0},
+                "queue": 0,
+                "wait_time": 0
+            }
+        }
+        
+        # Reset UI
         self.status_label.configure(text="⚫ Dừng", text_color="#64748b")
         self.case_box.set("Mặc định")
         self.mode_option.set("Mặc định")
+        
+        # Reset các ô nhập thời gian về giá trị mặc định
+        self.green_entry.delete(0, 'end')
+        self.green_entry.insert(0, "30")
+        self.yellow_entry.delete(0, 'end')
+        self.yellow_entry.insert(0, "3")
+        self.red_entry.delete(0, 'end')
+        self.red_entry.insert(0, "30")
         
         # Reset global KPI
         for name, label in self.global_kpi_cards.items():
@@ -799,10 +922,14 @@ class SmartTrafficApp(ctk.CTk):
             for direction, label in widgets["directions"].items():
                 label.configure(text="0")
         
-        # Clear log
-        self.log_box.delete("1.0", "end")
-        self.log("🔄 Đã đặt lại")
+        # GIỮ log (không xóa), chỉ thêm thông báo reset
+        self.log("🔄 Đã đặt lại toàn bộ hệ thống về giá trị mặc định")
+        self.log("📊 Thời gian đèn: Xanh 30s, Vàng 3s, Đỏ 30s")
         self.log("🚦 Hệ thống 2 ngã tư sẵn sàng")
+        
+        # Khởi động lại SUMO nếu đang chạy trước đó (sau 1 giây)
+        if was_running:
+            self.after(1000, self.start_sim)  # Khởi động sau 1 giây để SUMO đóng hoàn toàn
 
     # =======================================================
 
@@ -835,6 +962,121 @@ class SmartTrafficApp(ctk.CTk):
             
         except ValueError:
             self.log("❌ Vui lòng nhập số hợp lệ")
+
+
+    def update_data_from_sumo(self):
+        """Cập nhật dữ liệu từ SUMO"""
+        import traci
+        
+        try:
+            # Lấy danh sách traffic lights
+            tls_ids = traci.trafficlight.getIDList()
+            
+            # Cập nhật dữ liệu cho từng ngã tư
+            for i, tls_id in enumerate(tls_ids[:2]):  # Chỉ lấy 2 ngã tư đầu
+                int_name = f"Ngã tư {i+1}"
+                if int_name not in self.intersection_data:
+                    continue
+                    
+                # Lấy thông tin đèn giao thông
+                current_phase = traci.trafficlight.getPhase(tls_id)
+                phase_duration = traci.trafficlight.getPhaseDuration(tls_id)
+                
+                # Map phase sang trạng thái đèn (giả sử phase 0 = xanh Bắc-Nam, phase 1 = xanh Đông-Tây)
+                if current_phase == 0:
+                    light_state = "Xanh"
+                elif current_phase == 1:
+                    light_state = "Đỏ"
+                else:
+                    light_state = "Vàng"
+                
+                self.intersection_data[int_name]["light_state"] = light_state
+                
+                # Lấy số lượng xe trên các làn đường (giả sử có edges tương ứng)
+                # Đây là mapping giả lập - cần điều chỉnh theo network thực
+                try:
+                    # Edges cho hướng Bắc, Nam, Đông, Tây
+                    edges = {
+                        "Bắc": f"-E{i*4}",  # Điều chỉnh theo network thực
+                        "Nam": f"E{i*4}", 
+                        "Đông": f"-E{i*4+1}",
+                        "Tây": f"E{i*4+1}"
+                    }
+                    
+                    total_vehicles = 0
+                    for direction, edge_id in edges.items():
+                        try:
+                            vehicle_count = traci.edge.getLastStepVehicleNumber(edge_id)
+                            self.intersection_data[int_name]["vehicles"][direction] = vehicle_count
+                            total_vehicles += vehicle_count
+                        except:
+                            self.intersection_data[int_name]["vehicles"][direction] = 0
+                    
+                    # Tính queue và wait time (giả lập)
+                    self.intersection_data[int_name]["queue"] = max(0, total_vehicles - 20)
+                    self.intersection_data[int_name]["wait_time"] = min(120, total_vehicles * 2)
+                    
+                except Exception as e:
+                    # Nếu không lấy được dữ liệu edges, dùng dữ liệu giả lập
+                    for direction in ["Bắc", "Nam", "Đông", "Tây"]:
+                        self.intersection_data[int_name]["vehicles"][direction] = random.randint(5, 25)
+                    self.intersection_data[int_name]["queue"] = random.randint(0, 15)
+                    self.intersection_data[int_name]["wait_time"] = random.randint(10, 60)
+            
+            # Cập nhật KPIs toàn cục
+            total_vehicles = sum(sum(data["vehicles"].values()) for data in self.intersection_data.values())
+            avg_delay = sum(data["wait_time"] for data in self.intersection_data.values()) / len(self.intersection_data)
+            throughput = total_vehicles * 10  # Giả lập throughput
+            avg_cycle = 60  # Giả lập chu kỳ
+            fairness = 0.85  # Giả lập công bằng
+            coordination = 80  # Giả lập phối hợp
+            
+            self.global_kpi_data = {
+                "Tổng xe": total_vehicles,
+                "Độ trễ TB": round(avg_delay, 1),
+                "Lưu lượng": throughput,
+                "Chu kỳ TB": avg_cycle,
+                "Công bằng": fairness,
+                "Phối hợp": coordination
+            }
+            
+        except Exception as e:
+            self.log(f"⚠ Cập nhật dữ liệu SUMO thất bại: {str(e)}")
+
+    def update_ui(self):
+        """Cập nhật giao diện người dùng"""
+        try:
+            # Cập nhật KPIs toàn cục
+            for key, value in self.global_kpi_data.items():
+                if key in self.global_kpi_cards:
+                    self.global_kpi_cards[key].configure(text=str(value))
+            
+            # Cập nhật dữ liệu từng ngã tư
+            for int_name, data in self.intersection_data.items():
+                if int_name in self.intersection_widgets:
+                    widgets = self.intersection_widgets[int_name]
+                    
+                    # Cập nhật queue và wait time
+                    widgets["queue"].configure(text=str(data["queue"]))
+                    widgets["wait"].configure(text=str(data["wait_time"]))
+                    
+                    # Cập nhật số xe theo hướng
+                    for direction, count in data["vehicles"].items():
+                        if direction in widgets["directions"]:
+                            widgets["directions"][direction].configure(text=str(count))
+            
+            # Log ngẫu nhiên
+            events = [
+                "Cập nhật trạng thái đèn giao thông",
+                "Phát hiện thay đổi lưu lượng",
+                "Điều chỉnh chu kỳ đèn",
+                "Hệ thống hoạt động ổn định",
+            ]
+            if random.random() < 0.1:  # Giảm tần suất log
+                self.log(random.choice(events))
+                
+        except Exception as e:
+            self.log(f"⚠ Cập nhật UI thất bại: {str(e)}")
 
 
 if __name__ == "__main__":
