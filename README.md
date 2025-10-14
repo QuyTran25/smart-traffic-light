@@ -16,20 +16,30 @@ pip install -r requirements.txt
 
 ## Cách chạy
 
-### Chạy mô phỏng cơ bản
+### Chạy mô phỏng với thời gian tùy chỉnh
 ```bash
 python main.py
 ```
 
-Script này sẽ:
-- Khởi động SUMO với giao diện đồ họa
-- Tải cấu hình từ `data/sumo/test2.sumocfg`
-- Thiết lập thời gian phase cho tất cả đèn giao thông
-- Chạy mô phỏng trong 1000 bước
-- Hiển thị thông tin về số xe và thời gian
+Chương trình sẽ:
+1. **Hỏi thời gian đèn**: Nhập thời gian xanh cho 2 hướng (Bắc-Nam và Đông-Tây)
+2. **Khởi động SUMO GUI**: Mở cửa sổ đồ họa hiển thị bản đồ giao thông
+3. **Thiết lập đèn**: Tự động áp dụng thời gian đã nhập
+4. **Chạy mô phỏng**: Hiển thị tiến trình và thông tin xe
+5. **Cho phép chạy lại**: Sau khi dừng, có thể nhập thời gian mới và chạy lại
+
+### Ví dụ sử dụng:
+```
+🚦 Thiết lập thời gian đèn giao thông
+========================================
+⏱️  Nhập thời gian xanh cho hướng Bắc-Nam (giây) [mặc định 70]: 45
+⏱️  Nhập thời gian xanh cho hướng Đông-Tây (giây) [mặc định 65]: 40
+✅ Đã thiết lập: Bắc-Nam 45s, Đông-Tây 40s
+```
 
 ### Dừng mô phỏng
-Nhấn `Ctrl+C` trong terminal để dừng mô phỏng.
+- Nhấn `Ctrl+C` trong terminal để dừng mô phỏng
+- Chương trình sẽ hỏi có muốn chạy lại với thời gian mới không
 
 ## Cấu trúc dự án
 

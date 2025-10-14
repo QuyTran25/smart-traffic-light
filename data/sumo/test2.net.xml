@@ -155,18 +155,18 @@
     </edge>
 
     <tlLogic id="J1" type="static" programID="0" offset="0">
-        <phase duration="30" state="GGGrrrGGGrrr"/>
+        <phase duration="70" state="GGGrrrGGGrrr"/>
         <phase duration="3"  state="yyyrrryyyrrr"/>
         <phase duration="2"  state="rrrrrrrrrrrr"/>
-        <phase duration="25" state="rrrGGGrrrGGG"/>
+        <phase duration="60" state="rrrGGGrrrGGG"/>
         <phase duration="3"  state="rrryyyrrryyy"/>
         <phase duration="2"  state="rrrrrrrrrrrr"/>
     </tlLogic>
     <tlLogic id="J3" type="static" programID="0" offset="0">
-        <phase duration="30" state="GGgrrrGGgrrr"/>
+        <phase duration="70" state="GGgrrrGGgrrr"/>
         <phase duration="3"  state="yyyrrryyyrrr"/>
         <phase duration="2"  state="rrrrrrrrrrrr"/>
-        <phase duration="25" state="rrrGGGrrrGGG"/>
+        <phase duration="60" state="rrrGGGrrrGGG"/>
         <phase duration="3"  state="rrryyyrrryyy"/>
         <phase duration="2"  state="rrrrrrrrrrrr"/>
     </tlLogic>
