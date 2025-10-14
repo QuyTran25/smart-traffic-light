@@ -4,7 +4,7 @@ from tkinter import ttk
 from datetime import datetime
 import threading, time, random
 
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
 
@@ -12,8 +12,8 @@ class SmartTrafficApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("🚦 HỆ THỐNG ĐIỀU KHIỂN ĐÈN GIAO THÔNG THÔNG MINH")
-        self.geometry("1200x900")  # Kích thước vừa phải
-        self.minsize(700, 600)  # Giảm minsize để có thể chia đôi màn hình
+        self.geometry("1200x900")
+        self.minsize(700, 600)
         self.running = False
         self.mode = "Mặc định"
         
@@ -21,33 +21,32 @@ class SmartTrafficApp(ctk.CTk):
 
     # ====================== UI Layout ======================
     def create_layout(self):
-        # Main container với background color
-        self.configure(fg_color="#0a1929")
+        self.configure(fg_color="#f8fafc")
         
         # Create a scrollable frame for entire content
         self.scrollable_frame = ctk.CTkScrollableFrame(
             self,
-            fg_color="#0a1929",
+            fg_color="#f8fafc",
             corner_radius=0,
-            scrollbar_button_color="#1e3a5f",
-            scrollbar_button_hover_color="#2d4a6f"
+            scrollbar_button_color="#cbd5e1",
+            scrollbar_button_hover_color="#94a3b8"
         )
         self.scrollable_frame.pack(fill="both", expand=True)
         
         # ---------- HEADER ----------
-        header = ctk.CTkFrame(self.scrollable_frame, corner_radius=0, fg_color="#0f1f33", height=70)
+        header = ctk.CTkFrame(self.scrollable_frame, corner_radius=0, fg_color="#ffffff", height=70)
         header.pack(fill="x", padx=0, pady=0)
         header.pack_propagate(False)
         
         # Header content
         header_left = ctk.CTkFrame(header, fg_color="transparent")
-        header_left.pack(side="left", padx=20, pady=12)  # Giảm padding
+        header_left.pack(side="left", padx=20, pady=12)
         
         # Icon + Title
         ctk.CTkLabel(
             header_left,
             text="🚦",
-            font=("Segoe UI", 24),  # Icon nhỏ hơn
+            font=("Segoe UI", 24),
         ).pack(side="left", padx=(0, 10))
         
         title_frame = ctk.CTkFrame(header_left, fg_color="transparent")
@@ -56,15 +55,15 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             title_frame,
             text="HỆ THỐNG ĐIỀU KHIỂN ĐÈN GIAO THÔNG THÔNG MINH",
-            font=("Segoe UI", 20, "bold"),  # Font nhỏ hơn
-            text_color="white",
+            font=("Segoe UI", 20, "bold"),
+            text_color="#0f172a",
             anchor="w"
         ).pack(anchor="w")
         
         ctk.CTkLabel(
             title_frame,
             text="Giám sát và điều khiển giao thông thời gian thực",
-            font=("Segoe UI", 12),  # Font nhỏ hơn
+            font=("Segoe UI", 12),
             text_color="#64748b",
             anchor="w"
         ).pack(anchor="w", pady=(2, 0))
@@ -77,17 +76,17 @@ class SmartTrafficApp(ctk.CTk):
             status_frame,
             text="⚫ Đã dừng",
             font=("Segoe UI", 12),
-            text_color="#94a3b8"
+            text_color="#64748b"
         )
         self.status_label.pack()
 
         # ---------- CONTROL BAR ----------
-        control_bar_main = ctk.CTkFrame(self.scrollable_frame, fg_color="#0f1f33", corner_radius=0)
+        control_bar_main = ctk.CTkFrame(self.scrollable_frame, fg_color="#ffffff", corner_radius=0)
         control_bar_main.pack(fill="x", padx=0, pady=(1, 0))
         
         # First row - Mode and Action buttons (compact)
-        control_bar_top = ctk.CTkFrame(control_bar_main, fg_color="transparent", height=60)  # Thu nhỏ
-        control_bar_top.pack(fill="x", padx=15, pady=(10, 0))  # Giảm padding
+        control_bar_top = ctk.CTkFrame(control_bar_main, fg_color="transparent", height=60)
+        control_bar_top.pack(fill="x", padx=15, pady=(10, 0))
         control_bar_top.pack_propagate(False)
         
         # Left controls
@@ -102,11 +101,12 @@ class SmartTrafficApp(ctk.CTk):
             variable=self.mode_option,
             font=("Segoe UI", 12, "bold"),
             command=self.change_mode,
-            fg_color="#1e3a5f",
+            fg_color="#cbd5e1",
             selected_color="#0ea5e9",
             selected_hover_color="#0284c7",
-            unselected_color="#1e3a5f",
-            unselected_hover_color="#2d4a6f",
+            unselected_color="#cbd5e1",
+            unselected_hover_color="#94a3b8",
+            text_color="#1e293b",
             width=120,
             height=38
         )
@@ -188,8 +188,8 @@ class SmartTrafficApp(ctk.CTk):
         export_btn.pack(side="left", padx=3)
         
         # Second row - Scenario selector
-        control_bar_bottom = ctk.CTkFrame(control_bar_main, fg_color="transparent", height=55)  # Thu nhỏ
-        control_bar_bottom.pack(fill="x", padx=15, pady=(6, 10))  # Giảm padding
+        control_bar_bottom = ctk.CTkFrame(control_bar_main, fg_color="transparent", height=55)
+        control_bar_bottom.pack(fill="x", padx=15, pady=(6, 10))
         control_bar_bottom.pack_propagate(False)
         
         scenario_frame = ctk.CTkFrame(control_bar_bottom, fg_color="transparent")
@@ -198,8 +198,8 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             scenario_frame,
             text="Kịch bản:",
-            font=("Segoe UI", 12),
-            text_color="#94a3b8"
+            font=("Segoe UI", 12, "bold"),
+            text_color="#334155"
         ).pack(side="left", padx=(0, 8))
         
         self.case_box = ctk.CTkOptionMenu(
@@ -209,11 +209,13 @@ class SmartTrafficApp(ctk.CTk):
                     "SC6 - Nhiều xe ưu tiên liên tiếp"],
             font=("Segoe UI", 12),
             dropdown_font=("Segoe UI", 11),
-            fg_color="#1e3a5f",
+            fg_color="#cbd5e1",
             button_color="#0ea5e9",
             button_hover_color="#0284c7",
-            dropdown_fg_color="#1e3a5f",
-            dropdown_hover_color="#2d4a6f",
+            dropdown_fg_color="#ffffff",
+            dropdown_hover_color="#e0f2fe",
+            dropdown_text_color="#0f172a",
+            text_color="#0f172a",
             width=350,
             height=38,
             corner_radius=6
@@ -222,7 +224,7 @@ class SmartTrafficApp(ctk.CTk):
         self.case_box.set("Mặc định")
 
         # ---------- MAIN CONTENT ----------
-        self.main_container = ctk.CTkFrame(self.scrollable_frame, corner_radius=0, fg_color="#0a1929")
+        self.main_container = ctk.CTkFrame(self.scrollable_frame, corner_radius=0, fg_color="#f8fafc")
         self.main_container.pack(fill="both", expand=True, padx=12, pady=(10, 10))
         
         # Create content frame
@@ -230,22 +232,23 @@ class SmartTrafficApp(ctk.CTk):
         self.content_frame.pack(fill="both", expand=True)
         
         # Layout: KPI + Vehicle trên cùng hàng, Log ở dưới full width
-        self.content_frame.grid_rowconfigure(0, weight=0)  # Top row (KPI + Vehicle)
-        self.content_frame.grid_rowconfigure(1, weight=0)  # Bottom row (Log) - fixed, use main scroll
+        self.content_frame.grid_rowconfigure(0, weight=0)
+        self.content_frame.grid_rowconfigure(1, weight=0)
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_columnconfigure(1, weight=1)
         
         # ---------- TOP ROW: KPI + VEHICLE ----------
+
         # KPI Section (left)
         kpi_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        kpi_container.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 10))  # Giảm padding
+        kpi_container.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 10))
         kpi_container.grid_columnconfigure(0, weight=1)
         kpi_container.grid_rowconfigure(0, weight=1)
         self.create_kpi_section(kpi_container)
         
         # Vehicle Section (right)
         vehicle_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        vehicle_container.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 10))  # Giảm padding
+        vehicle_container.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 10))
         vehicle_container.grid_columnconfigure(0, weight=1)
         vehicle_container.grid_rowconfigure(0, weight=1)
         self.create_vehicle_section(vehicle_container)
@@ -258,29 +261,30 @@ class SmartTrafficApp(ctk.CTk):
         self.create_log_section(log_container)
 
     # =======================================================
+
     def create_kpi_section(self, parent):
-        """Create KPI cards section - COMPACT"""
-        section = ctk.CTkFrame(parent, fg_color="#0f1f33", corner_radius=12)
+        """Create KPI cards section - COMPACT with LIGHT theme"""
+        section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=12)
         section.grid(row=0, column=0, sticky="nsew")
         section.grid_columnconfigure(0, weight=1)
         section.grid_rowconfigure(1, weight=1)
         
         # Header - compact
-        header_frame = ctk.CTkFrame(section, fg_color="transparent", height=40)  # Thu nhỏ
-        header_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=(12, 8))  # Giảm padding
+        header_frame = ctk.CTkFrame(section, fg_color="transparent", height=40)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=(12, 8))
         header_frame.pack_propagate(False)
         
         ctk.CTkLabel(
             header_frame,
             text="📊  KPI Thời gian thực",
-            font=("Segoe UI", 14, "bold"),  # Font nhỏ hơn
-            text_color="white",
+            font=("Segoe UI", 14, "bold"),
+            text_color="#0f172a",
             anchor="w"
         ).pack(side="left")
         
         # KPI Grid
         kpi_grid = ctk.CTkFrame(section, fg_color="transparent")
-        kpi_grid.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))  # Giảm padding
+        kpi_grid.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         
         # Configure grid for 2 columns
         kpi_grid.grid_columnconfigure(0, weight=1)
@@ -288,16 +292,15 @@ class SmartTrafficApp(ctk.CTk):
         
         self.kpi_cards = {}
         
-        # KPI data with LIGHTER colors (nhạt hơn để làm nổi số)
         kpi_data = [
-            ("Độ trễ TB", "45.2", "s", "#1e3a5f", "#60a5fa", "⏱"),
-            ("Hàng chờ", "12.8", "xe", "#4a2517", "#fb923c", "🚗"),
-            ("Lưu lượng", "342", "xe/h", "#14532d", "#4ade80", "📈"),
-            ("Dừng/xe", "2.4", "lần", "#1e293b", "#cbd5e1", "⏸"),
-            ("Chờ tối đa", "128", "s", "#4c0519", "#f87171", "⏰"),
-            ("Chu kỳ đèn", "90", "s", "#0f766e", "#5eead4", "💡"),
-            ("Công bằng", "0.87", "", "#14532d", "#86efac", "⚖"),
-            ("Xử lý khẩn cấp", "18", "s", "#4a2517", "#fbbf24", "⚡"),
+            ("Độ trễ TB", "—", "s", "#ddd6fe", "#4c1d95", "⏱"),           # Pastel purple
+            ("Hàng chờ", "—", "xe", "#fed7aa", "#9a3412", "🚗"),          # Pastel peach
+            ("Lưu lượng", "—", "xe/h", "#bbf7d0", "#14532d", "📈"),        # Pastel mint green
+            ("Dừng/xe", "—", "lần", "#e0e7ff", "#312e81", "⏸"),           # Pastel indigo
+            ("Chờ tối đa", "—", "s", "#fecaca", "#991b1b", "⏰"),          # Pastel red/pink
+            ("Chu kỳ đèn", "—", "s", "#a5f3fc", "#164e63", "💡"),         # Pastel cyan
+            ("Công bằng", "—", "", "#fef08a", "#713f12", "⚖"),            # Pastel yellow
+            ("Xử lý khẩn cấp", "—", "s", "#fbcfe8", "#831843", "⚡"),     # Pastel pink/magenta
         ]
         
         for idx, (name, value, unit, bg_color, text_color, icon) in enumerate(kpi_data):
@@ -308,7 +311,7 @@ class SmartTrafficApp(ctk.CTk):
                 kpi_grid,
                 fg_color=bg_color,
                 corner_radius=10,
-                height=65  # Thu nhỏ thêm để responsive hơn
+                height=65
             )
             card.grid(row=row, column=col, padx=3, pady=3, sticky="nsew")
             card.grid_propagate(False)
@@ -317,19 +320,19 @@ class SmartTrafficApp(ctk.CTk):
             ctk.CTkLabel(
                 card,
                 text=icon,
-                font=("Segoe UI", 18),  # Icon nhỏ hơn
+                font=("Segoe UI", 18),
                 text_color=text_color
-            ).pack(side="left", padx=(12, 8), pady=8)  # Giảm padding
+            ).pack(side="left", padx=(12, 8), pady=8)
             
             # Content
             content = ctk.CTkFrame(card, fg_color="transparent")
-            content.pack(side="left", fill="both", expand=True, pady=8, padx=(0, 8))  # Giảm padding
+            content.pack(side="left", fill="both", expand=True, pady=8, padx=(0, 8))
             
             ctk.CTkLabel(
                 content,
                 text=name,
-                font=("Segoe UI", 12),  # Font nhỏ hơn
-                text_color="#94a3b8",
+                font=("Segoe UI", 11, "bold"),
+                text_color="#0f172a",
                 anchor="w"
             ).pack(anchor="w")
             
@@ -339,7 +342,7 @@ class SmartTrafficApp(ctk.CTk):
             val_label = ctk.CTkLabel(
                 value_frame,
                 text=value,
-                font=("Segoe UI", 20, "bold"),  # Thu nhỏ để responsive hơn
+                font=("Segoe UI", 20, "bold"),
                 text_color=text_color,
                 anchor="w"
             )
@@ -349,46 +352,47 @@ class SmartTrafficApp(ctk.CTk):
                 ctk.CTkLabel(
                     value_frame,
                     text=f" {unit}",
-                    font=("Segoe UI", 12),
-                    text_color="#64748b",
+                    font=("Segoe UI", 11),
+                    text_color="#475569",
                     anchor="w"
                 ).pack(side="left", pady=(8, 0))
             
             self.kpi_cards[name] = val_label
-    
+
     # =======================================================
+
     def create_vehicle_section(self, parent):
-        """Create vehicle count section - VERY COMPACT"""
-        section = ctk.CTkFrame(parent, fg_color="#0f1f33", corner_radius=12)
+        """Create vehicle count section - VERY COMPACT with LIGHT theme"""
+        section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=12)
         section.grid(row=0, column=0, sticky="nsew")
         section.grid_rowconfigure(1, weight=1)
         section.grid_columnconfigure(0, weight=1)
         
         # Header - compact
-        header_frame = ctk.CTkFrame(section, fg_color="transparent", height=40)  # Thu nhỏ
-        header_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=(12, 8))  # Giảm padding
+        header_frame = ctk.CTkFrame(section, fg_color="transparent", height=40)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=(12, 8))
         header_frame.pack_propagate(False)
         
         ctk.CTkLabel(
             header_frame,
             text="🚦  Số lượng xe",
-            font=("Segoe UI", 14, "bold"),  # Font nhỏ hơn
-            text_color="white",
+            font=("Segoe UI", 14, "bold"),
+            text_color="#0f172a",
             anchor="w"
         ).pack(side="left")
         
         # Content frame
         content = ctk.CTkFrame(section, fg_color="transparent")
-        content.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))  # Giảm padding
+        content.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         content.grid_columnconfigure(0, weight=1)
         content.grid_rowconfigure(1, weight=1)
         
         # Total count card (compact)
         total_card = ctk.CTkFrame(
             content,
-            fg_color="#1e3a5f",
+            fg_color="#dbeafe",
             corner_radius=12,
-            height=70  # Thu nhỏ để responsive
+            height=70
         )
         total_card.grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 6))
         total_card.grid_propagate(False)
@@ -399,21 +403,21 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             total_content,
             text="Tổng số xe",
-            font=("Segoe UI", 12),
-            text_color="#94a3b8"
+            font=("Segoe UI", 12, "bold"),
+            text_color="#0f172a"
         ).pack()
         
         self.total_vehicle_label = ctk.CTkLabel(
             total_content,
-            text="176",
-            font=("Segoe UI", 34, "bold"),  # Thu nhỏ để responsive
-            text_color="#60a5fa"
+            text="0",
+            font=("Segoe UI", 34, "bold"),
+            text_color="#1e3a8a"
         )
         self.total_vehicle_label.pack()
         
         # Direction cards (2x2 grid) - very compact
         direction_grid = ctk.CTkFrame(content, fg_color="transparent")
-        direction_grid.grid(row=1, column=0, sticky="nsew", pady=(4, 0))  # Giảm padding
+        direction_grid.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
         direction_grid.grid_columnconfigure(0, weight=1)
         direction_grid.grid_columnconfigure(1, weight=1)
         direction_grid.grid_rowconfigure(0, weight=1)
@@ -421,12 +425,11 @@ class SmartTrafficApp(ctk.CTk):
         
         self.direction_labels = {}
         
-        # Direction data with LIGHTER colors
         directions = [
-            ("Bắc", "45", "#1e3a5f", "#60a5fa", "⬆"),
-            ("Nam", "38", "#4a2517", "#fb923c", "⬇"),
-            ("Đông", "52", "#14532d", "#4ade80", "➡"),
-            ("Tây", "41", "#1e3a5f", "#93c5fd", "⬅"),
+            ("Bắc", "0", "#e9d5ff", "#6b21a8", "⬆"),    # Lavender pastel
+            ("Nam", "0", "#fed7aa", "#9a3412", "⬇"),    # Peach pastel
+            ("Đông", "0", "#bbf7d0", "#14532d", "➡"),   # Mint green pastel
+            ("Tây", "0", "#fce7f3", "#831843", "⬅"),    # Pink pastel
         ]
         
         for idx, (direction, count, bg_color, text_color, icon) in enumerate(directions):
@@ -438,22 +441,22 @@ class SmartTrafficApp(ctk.CTk):
                 fg_color=bg_color,
                 corner_radius=10
             )
-            card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")  # Giảm padding
+            card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
             
             content_frame = ctk.CTkFrame(card, fg_color="transparent")
-            content_frame.pack(expand=True, pady=12)  # Giảm padding từ 15 -> 12
+            content_frame.pack(expand=True, pady=12)
             
             ctk.CTkLabel(
                 content_frame,
                 text=f"{icon}  {direction}",
-                font=("Segoe UI", 12),  # Font nhỏ hơn
-                text_color="#94a3b8"
+                font=("Segoe UI", 12, "bold"),
+                text_color="#0f172a"
             ).pack()
             
             val_label = ctk.CTkLabel(
                 content_frame,
                 text=count,
-                font=("Segoe UI", 24, "bold"),  # Thu nhỏ để responsive
+                font=("Segoe UI", 24, "bold"),
                 text_color=text_color
             )
             val_label.pack(pady=(2, 0))
@@ -461,9 +464,10 @@ class SmartTrafficApp(ctk.CTk):
             self.direction_labels[direction] = val_label
     
     # =======================================================
+
     def create_log_section(self, parent):
         """Create log section - VERY TALL without own scrollbar"""
-        section = ctk.CTkFrame(parent, fg_color="#0f1f33", corner_radius=12)
+        section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=12)
         section.grid(row=0, column=0, sticky="nsew")
         
         # Header
@@ -475,7 +479,7 @@ class SmartTrafficApp(ctk.CTk):
             header_frame,
             text="📋  Sự kiện Log",
             font=("Segoe UI", 14, "bold"),
-            text_color="white",
+            text_color="#0f172a",
             anchor="w"
         ).pack(side="left")
         
@@ -485,8 +489,8 @@ class SmartTrafficApp(ctk.CTk):
         
         self.log_box = tk.Text(
             log_frame,
-            bg="#0a1929",
-            fg="#cbd5e1",
+            bg="#f8fafc",
+            fg="#1e293b",
             wrap="word",
             relief="flat",
             font=("Consolas", 9),
@@ -494,11 +498,14 @@ class SmartTrafficApp(ctk.CTk):
             pady=10,
             borderwidth=0,
             highlightthickness=0,
-            height=25  # Tăng cao lên 25 dòng - dùng scroll chính để cuộn
+            height=25
         )
         self.log_box.pack(fill="both", expand=True)
+        
+        self.log("🚦 Hệ thống sẵn sàng. Nhấn 'Chạy' để bắt đầu mô phỏng.")
 
     # =======================================================
+
     def change_mode(self, value):
         self.mode = value
         self.log(f"✓ Chuyển sang chế độ: {value}")
@@ -518,7 +525,7 @@ class SmartTrafficApp(ctk.CTk):
 
     def stop_sim(self):
         self.running = False
-        self.status_label.configure(text="⚫ Đã dừng", text_color="#94a3b8")
+        self.status_label.configure(text="⚫ Đã dừng", text_color="#64748b")
         self.log("⏹ Đã dừng mô phỏng")
 
     def export_log(self):
@@ -577,10 +584,11 @@ class SmartTrafficApp(ctk.CTk):
             time.sleep(2)
 
     # =======================================================
+
     def reset_all(self):
         """Reset all interface elements"""
         self.running = False
-        self.status_label.configure(text="⚫ Đã dừng", text_color="#94a3b8")
+        self.status_label.configure(text="⚫ Đã dừng", text_color="#64748b")
         self.case_box.set("Mặc định")
         self.mode_option.set("Mặc định")
         
@@ -596,8 +604,10 @@ class SmartTrafficApp(ctk.CTk):
         # Clear log
         self.log_box.delete("1.0", "end")
         self.log("🔄 Hệ thống đã được đặt lại")
+        self.log("🚦 Hệ thống sẵn sàng. Nhấn 'Chạy' để bắt đầu mô phỏng.")
 
     # =======================================================
+
     def log(self, msg):
         """Add log message with timestamp"""
         timestamp = datetime.now().strftime("%H:%M:%S")
