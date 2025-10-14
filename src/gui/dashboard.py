@@ -69,16 +69,16 @@ class SmartTrafficApp(ctk.CTk):
         
         ctk.CTkLabel(
             title_frame,
-            text="HỆ THỐNG 2 NGÃ TƯ THÔNG MINH",
-            font=("Segoe UI", 16, "bold"),
+            text="HỆ THỐNG ĐIỀU CHỈNH ĐÈN GIAO THÔNG THÔNG MINH",
+            font=("Segoe UI", 20, "bold"),
             text_color="#0f172a",
             anchor="w"
         ).pack(anchor="w")
         
         ctk.CTkLabel(
             title_frame,
-            text="Demo SUMO - 2 ngã tư kết nối",
-            font=("Segoe UI", 11),
+            text="Giám sát và điều khiển đèn giao thông dựa trên mật độ xe",
+            font=("Segoe UI", 12),
             text_color="#64748b",
             anchor="w"
         ).pack(anchor="w", pady=(2, 0))
@@ -290,7 +290,7 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             header_frame,
             text="📊 KPI Tổng Hợp",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 14, "bold"),
             text_color="#0f172a",
             anchor="w"
         ).pack(side="left")
@@ -338,7 +338,7 @@ class SmartTrafficApp(ctk.CTk):
             ctk.CTkLabel(
                 content,
                 text=name,
-                font=("Segoe UI", 8, "bold"),
+                font=("Segoe UI", 14, "bold"),
                 text_color="#0f172a",
                 anchor="w"
             ).pack(anchor="w")
@@ -349,7 +349,7 @@ class SmartTrafficApp(ctk.CTk):
             val_label = ctk.CTkLabel(
                 value_frame,
                 text=value,
-                font=("Segoe UI", 15, "bold"),
+                font=("Segoe UI", 18, "bold"),
                 text_color=text_color,
                 anchor="w"
             )
@@ -359,7 +359,7 @@ class SmartTrafficApp(ctk.CTk):
                 ctk.CTkLabel(
                     value_frame,
                     text=f" {unit}",
-                    font=("Segoe UI", 8),
+                    font=("Segoe UI", 12),
                     text_color="#475569",
                     anchor="w"
                 ).pack(side="left", pady=(4, 0))
@@ -410,7 +410,7 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             queue_content,
             text="Hàng chờ",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 14, "bold"),
             text_color="#0f172a"
         ).pack()
         
@@ -428,7 +428,7 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             queue_value_frame,
             text=" xe",
-            font=("Segoe UI", 11),
+            font=("Segoe UI", 12),
             text_color="#475569"
         ).pack(side="left", pady=(6, 0))
         
@@ -450,7 +450,7 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             wait_content,
             text="Chờ TB",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 14, "bold"),
             text_color="#0f172a"
         ).pack()
         
@@ -481,7 +481,7 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             vehicles_frame,
             text="Số xe theo hướng",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 14, "bold"),
             text_color="#475569"
         ).pack(pady=(6, 3))
         
@@ -511,7 +511,7 @@ class SmartTrafficApp(ctk.CTk):
             ctk.CTkLabel(
                 content,
                 text=dir_name,
-                font=("Segoe UI", 9, "bold"),
+                font=("Segoe UI", 14, "bold"),
                 text_color="#0f172a"
             ).pack()
             
@@ -544,7 +544,7 @@ class SmartTrafficApp(ctk.CTk):
         ctk.CTkLabel(
             header_frame,
             text="📋 Log Hệ Thống",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 14, "bold"),
             text_color="#0f172a",
             anchor="w"
         ).pack(side="left")
@@ -558,7 +558,7 @@ class SmartTrafficApp(ctk.CTk):
             fg="#1e293b",
             wrap="word",
             relief="flat",
-            font=("Consolas", 9),
+            font=("Consolas", 12),
             padx=8,
             pady=8,
             borderwidth=0,
