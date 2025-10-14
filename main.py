@@ -20,27 +20,36 @@ def nhap_thoi_gian_den():
     print("=" * 40)
     
     try:
-        # Nhập thời gian cho phase Bắc-Nam
-        bac_nam = int(input("⏱️  Nhập thời gian xanh cho hướng Bắc-Nam (giây) [mặc định 70]: ") or 30)
-        print("Thời gian đèn vàng là 5s vui lòng trừ hao thời gian đèn.")
+        # Nhập thời gian xanh chung cho cả 4 hướng
+        xanh_chung = int(input("⏱️  Nhập thời gian xanh chung cho cả 4 hướng (giây) [mặc định 70]: ") or 70)
         
-        # Nhập thời gian cho phase Đông-Tây
-        dong_tay = int(input("⏱️  Nhập thời gian xanh cho hướng Đông-Tây (giây) [mặc định 65]: ") or 25)
+        # Nhập thời gian vàng chung cho cả 4 hướng
+        vang_chung = int(input("⏱️  Nhập thời gian vàng chung cho cả 4 hướng (giây) [mặc định 3]: ") or 3)
+        
+        # Nhập thời gian đỏ toàn phần
+        do_toan_phan = int(input("⏱️  Nhập thời gian đỏ toàn phần (giây) [mặc định 3]: ") or 3)
         
         # Validate input
-        if bac_nam <= 0 or dong_tay <= 0:
-            print("❌ Thời gian phải lớn hơn 0!")
+        if any(t < 0 for t in [xanh_chung, vang_chung, do_toan_phan]):
+            print("❌ Thời gian phải lớn hơn hoặc bằng 0!")
             return nhap_thoi_gian_den()
         
-        if bac_nam > 120 or dong_tay > 120:
-            print("⚠️  Cảnh báo: Thời gian quá dài (>120s) có thể gây ùn tắc!")
+        if xanh_chung > 120:
+            print("⚠️  Cảnh báo: Thời gian xanh quá dài (>120s)!")
+        
+        if vang_chung > 30:
+            print("⚠️  Cảnh báo: Thời gian vàng quá dài (>30s)!")
         
         phase_durations = {
-            0: bac_nam,   # Phase Bắc-Nam
-            1: dong_tay   # Phase Đông-Tây
+            'xanh_chung': xanh_chung,        # Thời gian xanh chung cho cả 2 hướng
+            'vang_chung': vang_chung,        # Thời gian vàng chung cho cả 2 hướng
+            'do_toan_phan': do_toan_phan     # Thời gian đỏ toàn phần
         }
         
-        print(f"✅ Đã thiết lập: Bắc-Nam {bac_nam}s, Đông-Tây {dong_tay}s")
+        print(f"✅ Đã thiết lập:")
+        print(f"   Xanh chung: {xanh_chung}s")
+        print(f"   Vàng chung: {vang_chung}s")
+        print(f"   Đỏ toàn phần: {do_toan_phan}s")
         return phase_durations
         
     except ValueError:

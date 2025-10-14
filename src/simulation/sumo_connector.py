@@ -156,7 +156,7 @@ def dieu_chinh_nhieu_den(tls_ids, phase_durations):
     
     Args:
         tls_ids: List các ID của traffic light systems
-        phase_durations: Dict với key là phase_index, value là duration (giây)
+        phase_durations: Dict với 'xanh_chung', 'vang_chung', 'do_toan_phan'
     """
     try:
         if not traci.isLoaded():
@@ -179,7 +179,7 @@ def dieu_chinh_tat_ca_den(phase_durations):
     Điều chỉnh thời gian các phase cho tất cả đèn giao thông trong mô phỏng.
     
     Args:
-        phase_durations: Dict với key là phase_index, value là duration (giây)
+        phase_durations: Dict với 'xanh_chung', 'vang_chung', 'do_toan_phan'
     """
     tls_ids = lay_danh_sach_den_giao_thong()
     if not tls_ids:
@@ -193,8 +193,10 @@ def tao_chuong_trinh_den(tls_id, phase_durations):
     
     Args:
         tls_id: ID của traffic light system
-        phase_durations: Dict với key là phase_index, value là duration (giây)
-                         0: phase xanh Bắc-Nam, 1: phase xanh Đông-Tây
+        phase_durations: Dict với các key:
+                         'xanh_chung': thời gian xanh chung cho cả 2 hướng (phase 0, 3)
+                         'vang_chung': thời gian vàng chung cho cả 2 hướng (phase 1, 4)
+                         'do_toan_phan': thời gian đỏ toàn phần (phase 2, 5)
     """
     try:
         if not traci.isLoaded():
@@ -204,14 +206,20 @@ def tao_chuong_trinh_den(tls_id, phase_durations):
         # Lấy logic hiện tại
         current_logic = traci.trafficlight.getCompleteRedYellowGreenDefinition(tls_id)[0]
         
-        # Mapping phase chính: 0->0 (Bắc-Nam), 1->3 (Đông-Tây)
-        phase_mapping = {0: 0, 1: 3}
+        # Mapping tất cả các phase cần cập nhật
+        phase_mapping = {
+            0: phase_durations.get('xanh_chung', current_logic.phases[0].duration),     # Bắc-Nam xanh
+            1: phase_durations.get('vang_chung', current_logic.phases[1].duration),     # Bắc-Nam vàng
+            2: phase_durations.get('do_toan_phan', current_logic.phases[2].duration),   # Đỏ toàn phần 1
+            3: phase_durations.get('xanh_chung', current_logic.phases[3].duration),     # Đông-Tây xanh
+            4: phase_durations.get('vang_chung', current_logic.phases[4].duration),     # Đông-Tây vàng
+            5: phase_durations.get('do_toan_phan', current_logic.phases[5].duration),   # Đỏ toàn phần 2
+        }
         
-        # Sao chép và sửa đổi duration chỉ cho phase chính
-        for logical_phase, actual_phase in phase_mapping.items():
-            if logical_phase in phase_durations:
-                current_logic.phases[actual_phase].duration = phase_durations[logical_phase]
-                print(f"📝 Phase chính {logical_phase} (actual {actual_phase}): duration = {phase_durations[logical_phase]}s")
+        # Cập nhật duration cho tất cả các phase
+        for phase_index, duration in phase_mapping.items():
+            current_logic.phases[phase_index].duration = duration
+            print(f"📝 Phase {phase_index}: duration = {duration}s")
         
         # Đặt lại logic đã sửa
         traci.trafficlight.setCompleteRedYellowGreenDefinition(tls_id, current_logic)
