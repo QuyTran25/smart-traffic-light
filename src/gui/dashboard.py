@@ -12,8 +12,8 @@ class SmartTrafficApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("🚦 HỆ THỐNG 2 NGÃ TƯ")
-        self.geometry("900x850")
-        self.minsize(850, 800)
+        self.geometry("700x850")
+        self.minsize(680, 800)
         self.running = False
         self.mode = "Mặc định"
         
@@ -231,7 +231,7 @@ class SmartTrafficApp(ctk.CTk):
             dropdown_hover_color="#e0f2fe",
             dropdown_text_color="#0f172a",
             text_color="#0f172a",
-            width=280,
+            width=220,
             height=34,
             corner_radius=5
         )
@@ -295,7 +295,6 @@ class SmartTrafficApp(ctk.CTk):
             anchor="w"
         ).pack(side="left")
         
-        # KPI Grid - horizontal layout
         kpi_grid = ctk.CTkFrame(section, fg_color="transparent")
         kpi_grid.pack(fill="x", padx=8, pady=(0, 8))
         
@@ -311,32 +310,35 @@ class SmartTrafficApp(ctk.CTk):
         ]
         
         for idx, (name, value, unit, bg_color, text_color, icon) in enumerate(kpi_data):
+            row = idx // 3
+            col = idx % 3
+            
             card = ctk.CTkFrame(
                 kpi_grid,
                 fg_color=bg_color,
                 corner_radius=6,
-                width=140,
-                height=70
+                width=110,
+                height=65
             )
-            card.grid(row=0, column=idx, padx=3, pady=0, sticky="ew")
+            card.grid(row=row, column=col, padx=3, pady=3, sticky="ew")
             card.grid_propagate(False)
             
             # Icon
             ctk.CTkLabel(
                 card,
                 text=icon,
-                font=("Segoe UI", 16),
+                font=("Segoe UI", 14),
                 text_color=text_color
-            ).pack(side="left", padx=(8, 6), pady=6)
+            ).pack(side="left", padx=(6, 4), pady=4)
             
             # Content
             content = ctk.CTkFrame(card, fg_color="transparent")
-            content.pack(side="left", fill="both", expand=True, pady=6, padx=(0, 6))
+            content.pack(side="left", fill="both", expand=True, pady=4, padx=(0, 4))
             
             ctk.CTkLabel(
                 content,
                 text=name,
-                font=("Segoe UI", 9, "bold"),
+                font=("Segoe UI", 8, "bold"),
                 text_color="#0f172a",
                 anchor="w"
             ).pack(anchor="w")
@@ -347,7 +349,7 @@ class SmartTrafficApp(ctk.CTk):
             val_label = ctk.CTkLabel(
                 value_frame,
                 text=value,
-                font=("Segoe UI", 18, "bold"),
+                font=("Segoe UI", 15, "bold"),
                 text_color=text_color,
                 anchor="w"
             )
@@ -357,15 +359,15 @@ class SmartTrafficApp(ctk.CTk):
                 ctk.CTkLabel(
                     value_frame,
                     text=f" {unit}",
-                    font=("Segoe UI", 9),
+                    font=("Segoe UI", 8),
                     text_color="#475569",
                     anchor="w"
-                ).pack(side="left", pady=(5, 0))
+                ).pack(side="left", pady=(4, 0))
             
             self.global_kpi_cards[name] = val_label
         
         # Configure grid columns to expand evenly
-        for i in range(len(kpi_data)):
+        for i in range(3):
             kpi_grid.grid_columnconfigure(i, weight=1)
 
     # =======================================================
