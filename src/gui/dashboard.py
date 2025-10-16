@@ -21,6 +21,7 @@ class SmartTrafficApp(ctk.CTk):
         self.minsize(680, 800)
         self.running = False
         self.paused = False  # Thêm biến để theo dõi trạng thái pause
+        self.resetting = False  # Thêm cờ để biết đang reset
         self.mode = "Mặc định"
         
         self.green_time = 30
@@ -738,7 +739,7 @@ class SmartTrafficApp(ctk.CTk):
             # Thử lấy thông tin từ SUMO để kiểm tra kết nối
             traci.simulation.getTime()
             sumo_is_running = True
-            self.log("▶ Tiếp tục mô phỏng từ nơi đã dừng")
+            self.log("▶ Tiếp tục/Bắt đầu mô phỏng")
         except (traci.exceptions.FatalTraCIError, traci.exceptions.TraCIException):
             # SUMO chưa khởi động hoặc đã bị đóng
             sumo_is_running = False
@@ -747,8 +748,8 @@ class SmartTrafficApp(ctk.CTk):
             sumo_is_running = False
         
         if sumo_is_running:
-            # SUMO đang chạy, chỉ cần tiếp tục (thread vẫn đang chạy và đang chờ)
-            pass  # Thread vẫn đang chạy, chỉ cần set running = True
+            # SUMO đang chạy, khởi động thread mô phỏng mới
+            threading.Thread(target=self.simulate_with_sumo, daemon=True).start()
         else:
             # Khởi động SUMO mới
             config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'sumo', 'test2.sumocfg')
@@ -828,8 +829,8 @@ class SmartTrafficApp(ctk.CTk):
             self.paused = False
             self.status_label.configure(text="⚫ Lỗi", text_color="#ef4444")
         finally:
-            # Chỉ đóng SUMO khi thực sự stop (không phải pause)
-            if not self.paused:
+            # Chỉ đóng SUMO khi thực sự stop (không phải pause hoặc reset)
+            if not self.paused and not self.resetting:
                 try:
                     dung_sumo()
                 except:
@@ -844,24 +845,46 @@ class SmartTrafficApp(ctk.CTk):
     
     def _do_reset(self):
         """Thực hiện reset (chạy trên thread riêng)"""
+        # Đánh dấu đang reset để không đóng SUMO trong finally block
+        self.resetting = True
+        
         # Lưu trạng thái đang chạy
         was_running = self.running
         
         # Dừng mô phỏng
         self.running = False
         self.paused = False
-        time.sleep(0.5)  # Đợi thread dừng
+        time.sleep(0.8)  # Đợi thread dừng lâu hơn
         
-        # Đóng SUMO cũ
+        # KHÔNG đóng SUMO, chỉ reload về trạng thái ban đầu
         try:
-            dung_sumo()
+            import traci
+            # Kiểm tra xem SUMO có đang kết nối không
+            try:
+                traci.simulation.getTime()
+                # SUMO đang chạy, reload về trạng thái ban đầu
+                config_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "data", "sumo", "test2.sumocfg"
+                )
+                traci.load(["-c", config_path])
+                self.log("🔄 Đã reload SUMO về trạng thái ban đầu")
+                self.log("ℹ️ Bạn có thể bấm Start trên SUMO GUI hoặc bấm Start ở đây")
+                time.sleep(0.5)  # Đợi reload hoàn tất
+                
+                # TỰ ĐỘNG bắt đầu simulation loop để SUMO có thể chạy
+                # Loop này sẽ đợi cho đến khi người dùng bấm Start (ở GUI hoặc Dashboard)
+                self.running = True  # Đặt running = True để loop chạy
+                threading.Thread(target=self.simulate_with_sumo, daemon=True).start()
+                self.log("✓ Simulation loop đã sẵn sàng, bấm Start bên SUMO hoặc Dashboard")
+            except Exception as e:
+                # SUMO không chạy hoặc lỗi
+                self.log(f"⚠ Không thể reload SUMO: {str(e)}")
         except:
             pass
         
-        # Đợi SUMO đóng hoàn toàn
-        time.sleep(0.5)
-        
         # Reset các biến dữ liệu nội bộ về giá trị mặc định (trên UI thread)
+        # Đặt callback để bỏ cờ resetting SAU KHI UI reset xong
         self.after(0, self._reset_ui_and_data, was_running)
     
     def _reset_ui_and_data(self, was_running):
@@ -898,8 +921,8 @@ class SmartTrafficApp(ctk.CTk):
             }
         }
         
-        # Reset UI
-        self.status_label.configure(text="⚫ Dừng", text_color="#64748b")
+        # Reset UI - Đặt trạng thái là "Đang chạy" vì simulation loop đã được start
+        self.status_label.configure(text="🟢 Sẵn sàng", text_color="#22c55e")
         self.case_box.set("Mặc định")
         self.mode_option.set("Mặc định")
         
@@ -926,10 +949,14 @@ class SmartTrafficApp(ctk.CTk):
         self.log("🔄 Đã đặt lại toàn bộ hệ thống về giá trị mặc định")
         self.log("📊 Thời gian đèn: Xanh 30s, Vàng 3s, Đỏ 30s")
         self.log("🚦 Hệ thống 2 ngã tư sẵn sàng")
+        self.log("💡 Bấm '▶ Chạy' hoặc bấm Start trong SUMO để bắt đầu lại")
         
-        # Khởi động lại SUMO nếu đang chạy trước đó (sau 1 giây)
-        if was_running:
-            self.after(1000, self.start_sim)  # Khởi động sau 1 giây để SUMO đóng hoàn toàn
+        # Bỏ cờ resetting SAU KHI UI reset xong
+        self.resetting = False
+        
+        # Simulation loop đã tự động start, người dùng có thể:
+        # 1. Bấm Start trong SUMO GUI → mô phỏng chạy ngay
+        # 2. Bấm '▶ Chạy' trong Dashboard → cũng chạy
 
     # =======================================================
 
