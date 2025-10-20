@@ -176,16 +176,50 @@ def dieu_chinh_nhieu_den(tls_ids, phase_durations):
 
 def dieu_chinh_tat_ca_den(phase_durations):
     """
-    Điều chỉnh thời gian các phase cho tất cả đèn giao thông trong mô phỏng.
-    
-    Args:
-        phase_durations: Dict với key là phase_index, value là duration (giây)
+    Ghi đè lại toàn bộ chương trình đèn giao thông trong SUMO
+    bằng các giá trị người dùng nhập.
     """
-    tls_ids = lay_danh_sach_den_giao_thong()
-    if not tls_ids:
-        return False
-    
-    return dieu_chinh_nhieu_den(tls_ids, phase_durations)
+    try:
+        den_ids = traci.trafficlight.getIDList()
+        print(f"📋 Tìm thấy {len(den_ids)} đèn giao thông: {den_ids}")
+
+        for tls_id in den_ids:
+            print(f"🔄 Đang điều chỉnh đèn {tls_id}...")
+
+            # Lấy logic hiện tại (vì SUMO yêu cầu có base logic trước)
+            current_logic = traci.trafficlight.getCompleteRedYellowGreenDefinition(tls_id)[0]
+
+            # Tạo lại chương trình đèn theo thời gian nhập
+            new_phases = []
+
+            # Cấu hình mới (theo kiểu 4 hướng cơ bản)
+            # Phase 0: Xanh hướng Bắc-Nam
+            new_phases.append(traci.trafficlight.Phase(
+                phase_durations['xanh_chung'], "GGGrrrGGGrrr", 0, 0))
+            # Phase 1: Vàng Bắc-Nam
+            new_phases.append(traci.trafficlight.Phase(
+                phase_durations['vang_chung'], "yyyrrryyyrrr", 0, 0))
+            # Phase 2: Đỏ toàn phần
+            new_phases.append(traci.trafficlight.Phase(
+                phase_durations['do_toan_phan'], "rrrrrrrrrrrr", 0, 0))
+            # Phase 3: Xanh Đông-Tây
+            new_phases.append(traci.trafficlight.Phase(
+                phase_durations['xanh_chung'], "rrrGGGrrrGGG", 0, 0))
+            # Phase 4: Vàng Đông-Tây
+            new_phases.append(traci.trafficlight.Phase(
+                phase_durations['vang_chung'], "rrryyyrrryyy", 0, 0))
+            # Phase 5: Đỏ toàn phần
+            new_phases.append(traci.trafficlight.Phase(
+                phase_durations['do_toan_phan'], "rrrrrrrrrrrr", 0, 0))
+
+            # Gán lại logic mới
+            new_logic = traci.trafficlight.Logic("custom", 0, 0, new_phases)
+            traci.trafficlight.setCompleteRedYellowGreenDefinition(tls_id, new_logic)
+
+            print(f"✅ Đèn {tls_id} đã cập nhật thành công.")
+        print("✅ Tất cả đèn đã được điều chỉnh theo giá trị nhập.")
+    except Exception as e:
+        print(f"❌ Lỗi khi điều chỉnh đèn: {str(e)}")
 
 def tao_chuong_trinh_den(tls_id, phase_durations):
     """
