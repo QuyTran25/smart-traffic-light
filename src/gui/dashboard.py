@@ -1,26 +1,29 @@
-# dashboard.py
+# src/gui/dashboard.py
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk, messagebox
 from datetime import datetime
-import threading, time, random, os, sys
+import threading
+import time
+import os
+import sys
+import random
 
-# Ensure project root is on sys.path so we can import controllers/adaptive_controller
+# ==================== PATH SETUP ====================
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# Also ensure local src is importable (your simulation module lives under src/simulation)
 SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if SRC_ROOT not in sys.path:
     sys.path.insert(0, SRC_ROOT)
 
+# SUMO connector functions you must have in simulation/sumo_connector.py
 from simulation.sumo_connector import khoi_dong_sumo, dung_sumo, dieu_chinh_tat_ca_den
-# Import AdaptiveController from controllers (you said it's at controllers/adaptive_controller.py)
+
 try:
     from controllers.adaptive_controller import AdaptiveController
-except Exception as e:
-    AdaptiveController = None  # We'll check at runtime and log if unavailable
+except Exception:
+    AdaptiveController = None
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -29,23 +32,25 @@ ctk.set_default_color_theme("blue")
 class SmartTrafficApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("🚦 HỆ THỐNG 2 NGÃ TƯ")
+        self.title("🚦 HỆ THỐNG ĐIỀU KHIỂN ĐÈN GIAO THÔNG THÔNG MINH")
         self.geometry("700x850")
         self.minsize(680, 800)
+
+        # runtime flags
         self.running = False
         self.paused = False
         self.resetting = False
         self.mode = "Mặc định"  # or "Tự động"
 
-        # default timings
+        # default timings (used in Mặc định mode)
         self.green_time = 30
         self.yellow_time = 3
-        self.red_time = 3
+        self.red_time = 3  # all-red time
 
-        # controllers dict for adaptive mode: {tls_id: AdaptiveController instance}
+        # controllers dict for adaptive mode
         self.controllers = {}
 
-        # data holders (same as your previous UI)
+        # KPI & intersection data
         self.global_kpi_data = {
             "Tổng xe": 0,
             "Độ trễ TB": 0.0,
@@ -70,6 +75,7 @@ class SmartTrafficApp(ctk.CTk):
             }
         }
 
+        # Build UI
         self.create_layout()
 
     # ====================== UI Layout ======================
@@ -97,9 +103,9 @@ class SmartTrafficApp(ctk.CTk):
         title_frame = ctk.CTkFrame(header_left, fg_color="transparent")
         title_frame.pack(side="left")
 
-        ctk.CTkLabel(title_frame, text="HỆ THỐNG 2 NGÃ TƯ THÔNG MINH", font=("Segoe UI", 16, "bold"),
-                     text_color="#0f172a", anchor="w").pack(anchor="w")
-        ctk.CTkLabel(title_frame, text="Demo SUMO - 2 ngã tư kết nối", font=("Segoe UI", 11),
+        ctk.CTkLabel(title_frame, text="HỆ THỐNG ĐIỀU KHIỂN ĐÈN TÍN HIỆU GIAO THÔNG THÔNG MINH",
+                     font=("Segoe UI", 16, "bold"), text_color="#0f172a", anchor="w").pack(anchor="w")
+        ctk.CTkLabel(title_frame, text="Demo SUMO", font=("Segoe UI", 11),
                      text_color="#64748b", anchor="w").pack(anchor="w", pady=(2, 0))
 
         status_frame = ctk.CTkFrame(header, fg_color="transparent")
@@ -107,12 +113,16 @@ class SmartTrafficApp(ctk.CTk):
         self.status_label = ctk.CTkLabel(status_frame, text="⚫ Dừng", font=("Segoe UI", 11, "bold"),
                                          text_color="#64748b")
         self.status_label.pack()
+        self.mode_status_label = ctk.CTkLabel(status_frame, text="Chế độ: Mặc định", font=("Segoe UI", 10),
+                                              text_color="#64748b")
+        self.mode_status_label.pack()
 
         # Control bar
-        control_bar_main = ctk.CTkFrame(self.scrollable_frame, fg_color="#ffffff", corner_radius=0)
-        control_bar_main.pack(fill="x", padx=0, pady=(1, 0))
+        self.control_bar_main = ctk.CTkFrame(self.scrollable_frame, fg_color="#ffffff", corner_radius=0)
+        self.control_bar_main.pack(fill="x", padx=0, pady=(1, 0))
 
-        control_bar_top = ctk.CTkFrame(control_bar_main, fg_color="transparent", height=45)
+        # ---------- First row (mode + action buttons) ----------
+        control_bar_top = ctk.CTkFrame(self.control_bar_main, fg_color="transparent", height=45)
         control_bar_top.pack(fill="x", padx=10, pady=(8, 0))
         control_bar_top.pack_propagate(False)
 
@@ -138,40 +148,82 @@ class SmartTrafficApp(ctk.CTk):
         )
         mode_segment.pack(side="left", padx=(0, 10))
 
-        # Buttons
+        # Action buttons
         btn_frame = ctk.CTkFrame(left_controls, fg_color="transparent")
         btn_frame.pack(side="left")
 
-        self.play_btn = ctk.CTkButton(btn_frame, text="▶", fg_color="#10b981", hover_color="#059669",
-                                     font=("Segoe UI", 11, "bold"), width=42, height=36, corner_radius=5,
-                                     command=self.start_sim)
+        self.play_btn = ctk.CTkButton(btn_frame, text="▶ CHẠY", fg_color="#10b981", hover_color="#059669",
+                                      font=("Segoe UI", 11, "bold"), width=42, height=36,
+                                      corner_radius=5, command=self.start_sim)
         self.play_btn.pack(side="left", padx=2)
 
-        self.pause_btn = ctk.CTkButton(btn_frame, text="⏸", fg_color="#f59e0b", hover_color="#d97706",
-                                       text_color="#000000", font=("Segoe UI", 11, "bold"), width=42, height=36,
-                                       corner_radius=5, command=self.pause_sim)
+        self.pause_btn = ctk.CTkButton(btn_frame, text="⏸ TẠM DỪNG", fg_color="#f59e0b", hover_color="#d97706",
+                                       text_color="#000000", font=("Segoe UI", 11, "bold"), width=42,
+                                       height=36, corner_radius=5, command=self.pause_sim)
         self.pause_btn.pack(side="left", padx=2)
 
-        self.stop_btn = ctk.CTkButton(btn_frame, text="⏹", fg_color="#ef4444", hover_color="#dc2626",
-                                      font=("Segoe UI", 11, "bold"), width=42, height=36, corner_radius=5,
-                                      command=self.stop_sim)
+        self.stop_btn = ctk.CTkButton(btn_frame, text="⏹ DỪNG", fg_color="#ef4444", hover_color="#dc2626",
+                                      font=("Segoe UI", 11, "bold"), width=42, height=36,
+                                      corner_radius=5, command=self.stop_sim)
         self.stop_btn.pack(side="left", padx=2)
 
-        reset_btn = ctk.CTkButton(btn_frame, text="🔄", fg_color="#64748b", hover_color="#475569",
-                                  font=("Segoe UI", 11, "bold"), width=42, height=36, corner_radius=5,
-                                  command=self.reset_all)
+        reset_btn = ctk.CTkButton(btn_frame, text="🔄 LÀM LẠI", fg_color="#64748b", hover_color="#475569",
+                                  font=("Segoe UI", 11, "bold"), width=42, height=36,
+                                  corner_radius=5, command=self.reset_all)
         reset_btn.pack(side="left", padx=2)
 
-        export_btn = ctk.CTkButton(btn_frame, text="⬇", fg_color="#3b82f6", hover_color="#2563eb",
-                                   font=("Segoe UI", 11, "bold"), width=42, height=36, corner_radius=5,
-                                   command=self.export_log)
+        export_btn = ctk.CTkButton(btn_frame, text="⬇ XUẤT FILE LOG", fg_color="#3b82f6", hover_color="#2563eb",
+                                   font=("Segoe UI", 11, "bold"), width=42, height=36,
+                                   corner_radius=5, command=self.export_log)
         export_btn.pack(side="left", padx=2)
 
-        # Timing inputs
-        timing_bar = ctk.CTkFrame(self.scrollable_frame, fg_color="#ffffff", corner_radius=0)
-        timing_bar.pack(fill="x", padx=0, pady=(1, 0))
+        # ---------- Second row (scenario selector) ----------
+        self.control_bar_bottom = ctk.CTkFrame(self.control_bar_main, fg_color="transparent", height=42)
+        self.control_bar_bottom.pack(fill="x", padx=10, pady=(6, 8))
+        self.control_bar_bottom.pack_propagate(False)
 
-        timing_container = ctk.CTkFrame(timing_bar, fg_color="transparent", height=50)
+        scenario_frame = ctk.CTkFrame(self.control_bar_bottom, fg_color="transparent")
+        scenario_frame.pack(side="left")
+
+        ctk.CTkLabel(
+            scenario_frame,
+            text="Kịch bản:",
+            font=("Segoe UI", 11, "bold"),
+            text_color="#334155"
+        ).pack(side="left", padx=(0, 8))
+
+        self.case_box = ctk.CTkOptionMenu(
+            scenario_frame,
+            values=[
+                "Mặc định",
+                "SC1 - Xe ưu tiên từ hướng chính",
+                "SC2 - Xe ưu tiên từ hướng nhánh",
+                "SC3 - Nhiều xe ưu tiên 2 hướng",
+                "SC4 - Báo giả",
+                "SC5 - Xe ưu tiên bị kẹt",
+                "SC6 - Nhiều xe ưu tiên liên tiếp"
+            ],
+            dropdown_font=("Segoe UI", 10),
+            fg_color="#cbd5e1",
+            button_color="#0ea5e9",
+            button_hover_color="#0284c7",
+            dropdown_fg_color="#ffffff",
+            dropdown_hover_color="#e0f2fe",
+            dropdown_text_color="#0f172a",
+            text_color="#0f172a",
+            width=220,
+            height=34,
+            corner_radius=5
+        )
+        self.case_box.pack(side="left")
+        self.case_box.set("Mặc định")
+
+
+        # Timing inputs (make as class attributes so change_mode can pack/forget them)
+        self.timing_bar = ctk.CTkFrame(self.scrollable_frame, fg_color="#ffffff", corner_radius=0)
+        self.timing_bar.pack(fill="x", padx=0, pady=(1, 0))
+
+        timing_container = ctk.CTkFrame(self.timing_bar, fg_color="transparent", height=50)
         timing_container.pack(fill="x", padx=10, pady=8)
         timing_container.pack_propagate(False)
 
@@ -251,7 +303,7 @@ class SmartTrafficApp(ctk.CTk):
         log_container.grid_columnconfigure(0, weight=1)
         self.create_log_section(log_container)
 
-    # ---------- UI helper creators (same as before) ----------
+    # ---------- UI helper creators (same as original UI) ----------
     def create_global_kpi_section(self, parent):
         section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
         section.pack(fill="x", padx=0, pady=0)
@@ -373,7 +425,7 @@ class SmartTrafficApp(ctk.CTk):
 
     def create_log_section(self, parent):
         section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
-        section.grid(row=0, column=0, sticky="nsew")
+        section.grid(row=2, column=0, sticky="nsew")
         section.grid_rowconfigure(0, weight=1)
         section.grid_columnconfigure(0, weight=1)
         header_frame = ctk.CTkFrame(section, fg_color="transparent", height=35)
@@ -386,21 +438,24 @@ class SmartTrafficApp(ctk.CTk):
         self.log_box = tk.Text(log_frame, bg="#f8fafc", fg="#1e293b", wrap="word", relief="flat",
                                font=("Consolas", 9), padx=8, pady=8, borderwidth=0, highlightthickness=0, height=8)
         self.log_box.pack(fill="both", expand=True)
-        self.log("🚦 Hệ thống 2 ngã tư sẵn sàng")
+        self.log("🚦 Hệ thống điều kiển đèn giao thông thông minh sẵn sàng")
 
     # ============ Mode switching ============
     def change_mode(self, value):
         self.mode = value
         self.log(f"✓ Chế độ: {value}")
+        self.mode_status_label.configure(text=f"Chế độ: {value}")
         # If switching from Adaptive -> Mặc định, stop controllers
         if value == "Mặc định":
             self.stop_all_controllers()
-        # If switching to Adaptive while SUMO is running, start controllers immediately
-        if value == "Tự động" and self.running:
-            self.start_controllers_if_needed()
+            self.timing_bar.pack(after=self.control_bar_main, fill="x", pady=(1, 0))
+        # If switching to Adaptive, hide timing and start controllers if running
+        if value == "Tự động":
+            self.timing_bar.pack_forget()
+            if self.running:
+                self.start_controllers_if_needed()
 
     # ============ Start / Pause / Stop ============
-
     def start_sim(self):
         if self.running:
             return
@@ -409,32 +464,39 @@ class SmartTrafficApp(ctk.CTk):
         self.paused = False
         self.status_label.configure(text="🟢 Chạy", text_color="#10b981")
 
-        # Check if SUMO already running (connected via traci)
+        # Lấy kịch bản được chọn
+        scenario = self.case_box.get()
+        self.log(f"▶ Bắt đầu mô phỏng với kịch bản: {scenario}")
+
+        # Kiểm tra SUMO đã chạy chưa
         sumo_is_running = False
         try:
             import traci
             traci.simulation.getTime()
             sumo_is_running = True
-            self.log("▶ Tiếp tục/Bắt đầu mô phỏng (SUMO đã chạy)")
+            self.log("▶ SUMO đã sẵn sàng, kết nối trực tiếp.")
         except Exception:
             sumo_is_running = False
 
+        # Xác định file cấu hình SUMO
         config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'sumo', 'test2.sumocfg')
         config_path = os.path.abspath(config_path)
 
+        # Nếu SUMO chưa chạy, khởi động
         if not sumo_is_running:
-            # Start SUMO GUI and connect
             if not khoi_dong_sumo(config_path, gui=True):
                 self.log("❌ Không thể khởi động SUMO. Kiểm tra cấu hình hoặc cài SUMO.")
                 self.running = False
                 self.status_label.configure(text="⚫ Lỗi", text_color="#ef4444")
                 return
             else:
-                self.log("▶ Bắt đầu SUMO GUI")
+                self.log("✅ SUMO GUI đã khởi động thành công")
 
-        # Now SUMO is running. Apply mode-specific setup
+        # Gọi hàm sinh kịch bản (dựa trên lựa chọn)
+        self.apply_scenario_to_sumo(scenario)
+
+        # Áp dụng chế độ (Mặc định / Tự động)
         if self.mode == "Mặc định":
-            # Apply static timings to all TLS
             try:
                 phase_durations = {
                     'xanh_chung': int(self.green_entry.get()),
@@ -447,7 +509,7 @@ class SmartTrafficApp(ctk.CTk):
                     'vang_chung': self.yellow_time,
                     'do_toan_phan': self.red_time
                 }
-            # Call function to update all TLS definitions
+
             try:
                 dieu_chinh_tat_ca_den(phase_durations)
                 self.log("✅ Áp dụng thời gian static cho tất cả đèn (Mặc định).")
@@ -455,10 +517,8 @@ class SmartTrafficApp(ctk.CTk):
                 self.log(f"⚠ Không thể áp dụng thời gian: {e}")
 
         elif self.mode == "Tự động":
-            # Start adaptive controllers for each TLS
             self.start_controllers_if_needed()
 
-        # Start the simulation loop thread
         threading.Thread(target=self.simulate_with_sumo, daemon=True).start()
 
     def pause_sim(self):
@@ -521,7 +581,14 @@ class SmartTrafficApp(ctk.CTk):
 
     # ============ Simulation loop ============
     def simulate_with_sumo(self):
-        import traci
+        try:
+            import traci
+        except Exception as e:
+            self.log(f"❌ Traci không sẵn sàng: {e}")
+            self.running = False
+            self.status_label.configure(text="⚫ Lỗi", text_color="#ef4444")
+            return
+
         try:
             sumo_ended = False
             while not sumo_ended:
@@ -539,7 +606,7 @@ class SmartTrafficApp(ctk.CTk):
                     # advance SUMO
                     traci.simulationStep()
 
-                    # if adaptive mode: call step() on each controller
+                    # adaptive controllers step
                     if self.mode == "Tự động" and self.controllers:
                         for tls_id, ctrl in list(self.controllers.items()):
                             try:
@@ -551,6 +618,7 @@ class SmartTrafficApp(ctk.CTk):
                     self.update_data_from_sumo()
                     self.update_ui()
 
+                    # small sleep to avoid UI freeze (and give SUMO CPU time)
                     time.sleep(0.1)
 
         except Exception as e:
@@ -611,8 +679,8 @@ class SmartTrafficApp(ctk.CTk):
                          "wait_time": 0}
         }
         self.status_label.configure(text="🟢 Sẵn sàng", text_color="#22c55e")
-        self.case_box.set("Mặc định")
         self.mode_option.set("Mặc định")
+        self.mode_status_label.configure(text="Chế độ: Mặc định")
         self.green_entry.delete(0, 'end'); self.green_entry.insert(0, "30")
         self.yellow_entry.delete(0, 'end'); self.yellow_entry.insert(0, "3")
         self.red_entry.delete(0, 'end'); self.red_entry.insert(0, "3")
@@ -628,8 +696,11 @@ class SmartTrafficApp(ctk.CTk):
     # ============ Logging & apply timing ============
     def log(self, msg):
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_box.insert("end", f"[{timestamp}] {msg}\n")
-        self.log_box.see("end")
+        try:
+            self.log_box.insert("end", f"[{timestamp}] {msg}\n")
+            self.log_box.see("end")
+        except Exception:
+            print(f"[{timestamp}] {msg}")
 
     def apply_timing(self):
         try:
@@ -659,63 +730,172 @@ class SmartTrafficApp(ctk.CTk):
                 self.log("ℹ️ SUMO chưa chạy; áp dụng sẽ thực hiện khi Start.")
         except ValueError:
             self.log("❌ Vui lòng nhập số hợp lệ")
+        # ============ Scenario handler ============
+    def apply_scenario_to_sumo(self, scenario_name):
+        """
+        Dựa trên kịch bản được chọn, sinh lưu lượng xe phù hợp trong SUMO.
+        Có thể mở rộng để sinh route.xml khác nhau, hoặc spawn xe theo thời gian.
+        """
+        try:
+            import traci
+        except Exception:
+            self.log("⚠ Không thể áp dụng kịch bản vì SUMO chưa sẵn sàng.")
+            return
+
+        self.log(f"🎬 Đang áp dụng {scenario_name} ...")
+
+        try:
+            # Xử lý theo từng kịch bản
+            if scenario_name == "Mặc định":
+                self.log("🚗 Kịch bản mặc định: Lưu lượng đều từ 4 hướng.")
+                # không cần thay đổi gì
+
+            elif scenario_name == "SC1 - Xe ưu tiên từ hướng chính":
+                self.log("🚓 SC1: Tăng lưu lượng từ hướng Bắc & Nam.")
+                traci.vehiclegenerator.add("mainFlow", 100, "N_in", "S_out")
+
+            elif scenario_name == "SC2 - Xe ưu tiên từ hướng nhánh":
+                self.log("🚙 SC2: Tăng lưu lượng từ hướng Đông & Tây.")
+                # Có thể thêm luồng hoặc spawn thêm xe thủ công
+
+            elif scenario_name == "SC3 - Nhiều xe ưu tiên 2 hướng":
+                self.log("🚒 SC3: Tăng lưu lượng cả Bắc & Đông, mô phỏng xe ưu tiên đa hướng.")
+
+            elif scenario_name == "SC4 - Báo giả":
+                self.log("🚨 SC4: Mô phỏng cảm biến báo giả (xe ưu tiên ảo).")
+
+            elif scenario_name == "SC5 - Xe ưu tiên bị kẹt":
+                self.log("🚓 SC5: Xe ưu tiên xuất hiện nhưng không qua được giao lộ (kẹt xe).")
+
+            elif scenario_name == "SC6 - Nhiều xe ưu tiên liên tiếp":
+                self.log("🚑 SC6: Chuỗi xe ưu tiên liên tục — thử thách điều khiển thích ứng.")
+
+            else:
+                self.log("ℹ️ Không có kịch bản cụ thể, chạy mặc định.")
+
+        except Exception as e:
+            self.log(f"⚠ Không thể áp dụng kịch bản: {e}")
 
     # ============ Update data from SUMO & UI ============
     def update_data_from_sumo(self):
-        import traci
+        """
+        Lấy dữ liệu thực từ SUMO qua traci:
+        - Trạng thái đèn (Red/Yellow/Green)
+        - Số xe theo hướng (dựa trên edge mapping)
+        - Hàng chờ (tổng) và thời gian chờ trung bình
+        - Tính KPI: Fairness, Coordination, Delay, Throughput, Cycle
+        """
+        try:
+            import traci
+        except Exception:
+            self.log("⚠ Traci chưa sẵn sàng khi update dữ liệu.")
+            return
+
         try:
             tls_ids = traci.trafficlight.getIDList()
-            # update first two TLS to UI
+            if not tls_ids:
+                return
+
+            # Duyệt qua hai ngã tư đầu (J1, J4)
             for i, tls_id in enumerate(tls_ids[:2]):
                 int_name = f"Ngã tư {i+1}"
                 if int_name not in self.intersection_data:
                     continue
-                current_phase = traci.trafficlight.getPhase(tls_id)
-                if current_phase == 0:
-                    light_state = "Xanh"
-                elif current_phase == 1:
-                    light_state = "Đỏ"
-                else:
-                    light_state = "Vàng"
-                self.intersection_data[int_name]["light_state"] = light_state
 
-                # basic edge mapping (you can adjust if needed)
+                # --- Lấy trạng thái đèn ---
                 try:
-                    edges = {
-                        "Bắc": f"-E{i*4}",
-                        "Nam": f"E{i*4}",
-                        "Đông": f"-E{i*4+1}",
-                        "Tây": f"E{i*4+1}"
-                    }
-                    total_vehicles = 0
-                    for direction, edge_id in edges.items():
-                        try:
-                            vehicle_count = traci.edge.getLastStepVehicleNumber(edge_id)
-                            self.intersection_data[int_name]["vehicles"][direction] = vehicle_count
-                            total_vehicles += vehicle_count
-                        except Exception:
-                            self.intersection_data[int_name]["vehicles"][direction] = 0
-                    self.intersection_data[int_name]["queue"] = max(0, total_vehicles - 20)
-                    self.intersection_data[int_name]["wait_time"] = min(120, total_vehicles * 2)
+                    state = traci.trafficlight.getRedYellowGreenState(tls_id)
                 except Exception:
-                    for d in ["Bắc", "Nam", "Đông", "Tây"]:
-                        self.intersection_data[int_name]["vehicles"][d] = random.randint(5, 25)
-                    self.intersection_data[int_name]["queue"] = random.randint(0, 15)
-                    self.intersection_data[int_name]["wait_time"] = random.randint(10, 60)
+                    state = ""
 
-            total_vehicles = sum(sum(data["vehicles"].values()) for data in self.intersection_data.values())
-            avg_delay = sum(data["wait_time"] for data in self.intersection_data.values()) / len(self.intersection_data)
-            throughput = total_vehicles * 10
-            avg_cycle = 60
-            fairness = 0.85
-            coordination = 80
+                if "G" in state:
+                    self.intersection_data[int_name]["light_state"] = "Xanh"
+                elif "y" in state.lower():
+                    self.intersection_data[int_name]["light_state"] = "Vàng"
+                elif all(ch == "r" for ch in state.lower()):
+                    self.intersection_data[int_name]["light_state"] = "Đỏ Toàn Phần"
+                else:
+                    self.intersection_data[int_name]["light_state"] = "Đỏ"
+
+                # --- Ánh xạ edge theo ngã tư ---
+                if i == 0:  # J1
+                    edges = {
+                        "Bắc": "-E1",
+                        "Nam": "-E2",
+                        "Đông": "-E3",
+                        "Tây": "E0"
+                    }
+                elif i == 1:  # J4
+                    edges = {
+                        "Bắc": "-E4",
+                        "Nam": "-E5",
+                        "Đông": "-E6",
+                        "Tây": "E3"
+                    }
+                else:
+                    edges = {}
+
+                total_wait = 0.0
+                total_vehicle = 0
+
+                # --- Đếm xe và thời gian chờ ---
+                for direction, edge_id in edges.items():
+                    try:
+                        vehicle_ids = traci.edge.getLastStepVehicleIDs(edge_id)
+                        vehicle_count = len(vehicle_ids)
+                        wait_time_sum = 0.0
+                        for vid in vehicle_ids:
+                            try:
+                                wait_time_sum += traci.vehicle.getWaitingTime(vid)
+                            except Exception:
+                                continue
+                        self.intersection_data[int_name]["vehicles"][direction] = vehicle_count
+                        total_vehicle += vehicle_count
+                        total_wait += wait_time_sum
+                    except Exception:
+                        self.intersection_data[int_name]["vehicles"][direction] = 0
+
+                self.intersection_data[int_name]["queue"] = total_vehicle
+                self.intersection_data[int_name]["wait_time"] = round(total_wait / total_vehicle, 1) if total_vehicle else 0
+
+            # --- Công bằng (Fairness) ---
+            queues = [data["queue"] for data in self.intersection_data.values()]
+            if len(queues) > 0:
+                mean_q = sum(queues) / len(queues)
+                std_q = (sum((x - mean_q) ** 2 for x in queues) / len(queues)) ** 0.5
+                fairness = round(1 - (std_q / (mean_q + 0.001)), 2)
+            else:
+                fairness = 1.0
+
+            # --- Phối hợp (Coordination) ---
+            try:
+                if len(tls_ids) >= 2:
+                    rem1 = traci.trafficlight.getNextSwitch(tls_ids[0]) - traci.simulation.getTime()
+                    rem2 = traci.trafficlight.getNextSwitch(tls_ids[1]) - traci.simulation.getTime()
+                    diff = abs(rem1 - rem2)
+                    cycle = self.green_time + self.yellow_time + self.red_time
+                    coordination = max(0, 100 * (1 - diff / cycle))
+                else:
+                    coordination = 100.0
+            except Exception:
+                coordination = 100.0
+
+            # --- Các KPI toàn cục ---
+            total_vehicles = sum(sum(d["vehicles"].values()) for d in self.intersection_data.values())
+            if len(self.intersection_data) > 0:
+                avg_delay = sum(data["wait_time"] for data in self.intersection_data.values()) / len(self.intersection_data)
+            else:
+                avg_delay = 0.0
+            throughput = total_vehicles * 10 
+            avg_cycle = int(self.green_time + self.yellow_time + self.red_time)
+
             self.global_kpi_data = {
                 "Tổng xe": total_vehicles,
                 "Độ trễ TB": round(avg_delay, 1),
                 "Lưu lượng": throughput,
                 "Chu kỳ TB": avg_cycle,
                 "Công bằng": fairness,
-                "Phối hợp": coordination
+                "Phối hợp": round(coordination, 1)
             }
 
         except Exception as e:
