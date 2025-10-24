@@ -3,6 +3,8 @@ import sys
 import os
 import time
 
+import subprocess
+
 # Thêm đường dẫn src vào sys.path để import được modules
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -13,6 +15,15 @@ from simulation.sumo_connector import (
     lay_thong_tin_den_giao_thong, dat_phase_den_giao_thong,
     tao_chuong_trinh_den
 )
+
+def mo_gui():
+    """Mở giao diện GUI (dashboard.py) ở process riêng."""
+    gui_path = os.path.join('src', 'gui', 'dashboard.py')
+    try:
+        subprocess.Popen([sys.executable, gui_path])
+        print("🖥️ GUI đã được khởi động thành công!")
+    except Exception as e:
+        print(f"❌ Không thể mở GUI: {e}")
 
 def chay_mo_phong():
     """Chạy mô phỏng SUMO với đèn giao thông thông minh."""
@@ -81,4 +92,42 @@ def chay_mo_phong():
         dung_sumo()
 
 if __name__ == "__main__":
-    chay_mo_phong()
+    import sys
+    
+    print("=" * 70)
+    print("🚦 HỆ THỐNG ĐIỀU KHIỂN ĐÈN GIAO THÔNG THÔNG MINH")
+    print("=" * 70)
+    print("\nChọn chế độ chạy:")
+    print("1. 🖥️  Mở GUI Dashboard (Khuyến nghị)")
+    print("2. 🔧 Chạy mô phỏng console (Không GUI)")
+    print("3. ❌ Thoát")
+    print("=" * 70)
+    
+    try:
+        choice = input("\nNhập lựa chọn (1/2/3): ").strip()
+        
+        if choice == "1":
+            print("\n🚀 Đang mở GUI Dashboard...")
+            # Import trực tiếp và chạy GUI
+            from src.gui.dashboard import SmartTrafficApp
+            app = SmartTrafficApp()
+            app.mainloop()
+            
+        elif choice == "2":
+            print("\n🚀 Chạy mô phỏng console...")
+            chay_mo_phong()
+            
+        elif choice == "3":
+            print("\n👋 Tạm biệt!")
+            sys.exit(0)
+            
+        else:
+            print("\n❌ Lựa chọn không hợp lệ!")
+            sys.exit(1)
+            
+    except KeyboardInterrupt:
+        print("\n\n👋 Tạm biệt!")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ Lỗi: {e}")
+        sys.exit(1)
