@@ -31,16 +31,16 @@ class VehicleCounter:
         # Junction J1 tại tọa độ (0, 0)
         self.junction_edges = {
             "J1": {
-                "Bắc": ["-E1_0", "-E1_1", "-E1_2"],  # Xe từ phía Bắc vào (J2 -> J1)
-                "Nam": ["-E2_0", "-E2_1", "-E2_2"],  # Xe từ phía Nam vào (J3 -> J1)
-                "Đông": ["-E3_0", "-E3_1", "-E3_2"],  # Xe từ phía Đông vào (J4 -> J1)
-                "Tây": ["E0_0", "E0_1", "E0_2"],      # Xe từ phía Tây vào (J0 -> J1)
+                "Bắc": ["-E1"],  # Xe từ phía Bắc vào (routes r5-r9)
+                "Nam": ["-E2"],  # Xe từ phía Nam vào (routes r10-r14)
+                "Đông": ["E3"],  # Xe từ phía Đông vào
+                "Tây": ["E0"],   # Xe từ phía Tây vào (routes r0-r4)
             },
             "J4": {
-                "Bắc": ["-E4_0", "-E4_1", "-E4_2"],  # Xe từ phía Bắc vào (J5 -> J4)
-                "Nam": ["-E5_0", "-E5_1", "-E5_2"],  # Xe từ phía Nam vào (J6 -> J4)
-                "Đông": ["-E6_0", "-E6_1", "-E6_2"],  # Xe từ phía Đông vào (J7 -> J4)
-                "Tây": ["E3_0", "E3_1", "E3_2"],      # Xe từ phía Tây vào (J1 -> J4)
+                "Bắc": ["-E4"],  # Xe từ phía Bắc vào
+                "Nam": ["-E5"],  # Xe từ phía Nam vào
+                "Đông": ["-E6"], # Xe từ phía Đông vào
+                "Tây": ["-E3"],  # Xe từ phía Tây vào (từ J1)
             }
         }
         
@@ -125,24 +125,28 @@ class VehicleCounter:
         print(f"  └─ Tây:  {len(tay)} edges - {tay}")
     
     def count_vehicles_on_edges(self):
-        """Đếm xe trên các edge (đường vào) của mỗi junction"""
+        """Đếm xe HIỆN TẠI trên các edge (không tích lũy)"""
+        # Reset về 0 trước khi đếm (snapshot hiện tại)
+        for junction_id in self.current_counts:
+            for direction in self.current_counts[junction_id]:
+                self.current_counts[junction_id][direction] = 0
+        
+        # Đếm lại từ đầu
         for junction_id, directions in self.junction_edges.items():
             for direction, edges in directions.items():
-                # Đếm tất cả xe trên các lane của direction này
+                vehicle_count = 0
                 for edge in edges:
                     try:
-                        # Lấy danh sách xe trên edge này
+                        # Lấy danh sách xe HIỆN TẠI trên edge này
                         vehicles = traci.edge.getLastStepVehicleIDs(edge)
-                        
-                        for veh_id in vehicles:
-                            # Nếu xe chưa được đếm, thêm vào
-                            if veh_id not in self.counted_vehicles[junction_id][direction]:
-                                self.counted_vehicles[junction_id][direction].add(veh_id)
-                                self.current_counts[junction_id][direction] += 1
+                        vehicle_count += len(vehicles)
                     
-                    except traci.exceptions.TraCIException:
-                        # Edge có thể chưa có xe, bỏ qua
+                    except Exception:
+                        # Edge có thể không tồn tại hoặc chưa có xe - bỏ qua
                         pass
+                
+                # Cập nhật số đếm hiện tại (không tích lũy)
+                self.current_counts[junction_id][direction] = vehicle_count
     
     def reset_counters(self):
         """Reset bộ đếm về 0"""

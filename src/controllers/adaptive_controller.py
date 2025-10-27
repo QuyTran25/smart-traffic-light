@@ -63,10 +63,10 @@ class AdaptiveController:
         
         # Mapping hướng với edges trong SUMO
         self.direction_edges = {
-            TrafficDirection.NORTH: ["-E1_0", "-E1_1", "-E1_2"],  # Từ J2 → J1
-            TrafficDirection.SOUTH: ["-E2_0", "-E2_1", "-E2_2"],  # Từ J3 → J1  
-            TrafficDirection.EAST: ["-E3_0", "-E3_1", "-E3_2"],   # Từ J4 → J1
-            TrafficDirection.WEST: ["E0_0", "E0_1", "E0_2"]       # Từ J0 → J1
+            TrafficDirection.NORTH: ["-E1"],  
+            TrafficDirection.SOUTH: ["-E2"],   
+            TrafficDirection.EAST: ["-E3"],   
+            TrafficDirection.WEST: ["E0"]       
         }
         
         # Traffic Light IDs trong SUMO

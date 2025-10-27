@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Additional file: Induction Loops và Area Detectors cho hệ thống điều khiển dựa trên mật độ xe -->
+
+<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
+
+    <!-- ==================== JUNCTION J1 (Ngã tư 1) ==================== -->
+    
+    <!-- E2 Area Detectors - Đo mật độ xe trên đoạn đường dài (50-150m trước ngã tư) -->
+    
+    <!-- Hướng Bắc (-E1) - Approaching J1 from North -->
+    <laneAreaDetector id="e2_J1_north" lane="-E1_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_north_lane1" lane="-E1_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_north_lane2" lane="-E1_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Nam (-E2) - Approaching J1 from South -->
+    <laneAreaDetector id="e2_J1_south" lane="-E2_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_south_lane1" lane="-E2_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_south_lane2" lane="-E2_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Tây (E0) - Approaching J1 from West -->
+    <laneAreaDetector id="e2_J1_west" lane="E0_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_west_lane1" lane="E0_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_west_lane2" lane="E0_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Đông (-E3) - Approaching J1 from East (from J4) -->
+    <laneAreaDetector id="e2_J1_east" lane="-E3_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_east_lane1" lane="-E3_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J1_east_lane2" lane="-E3_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    
+    <!-- E1 Instant Detectors - Đếm xe tại điểm cụ thể (10m trước ngã tư) -->
+    
+    <!-- Hướng Bắc (-E1) -->
+    <inductionLoop id="e1_J1_north_0" lane="-E1_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_north_1" lane="-E1_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_north_2" lane="-E1_2" pos="10.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Nam (-E2) -->
+    <inductionLoop id="e1_J1_south_0" lane="-E2_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_south_1" lane="-E2_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_south_2" lane="-E2_2" pos="10.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Tây (E0) -->
+    <inductionLoop id="e1_J1_west_0" lane="E0_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_west_1" lane="E0_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_west_2" lane="E0_2" pos="10.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Đông (-E3) -->
+    <inductionLoop id="e1_J1_east_0" lane="-E3_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_east_1" lane="-E3_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J1_east_2" lane="-E3_2" pos="10.0" freq="10" file="NUL"/>
+    
+    
+    <!-- ==================== JUNCTION J4 (Ngã tư 2) ==================== -->
+    
+    <!-- E2 Area Detectors cho J4 -->
+    
+    <!-- Hướng Bắc (-E4) - Approaching J4 from North -->
+    <laneAreaDetector id="e2_J4_north" lane="-E4_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_north_lane1" lane="-E4_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_north_lane2" lane="-E4_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Nam (-E5) - Approaching J4 from South -->
+    <laneAreaDetector id="e2_J4_south" lane="-E5_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_south_lane1" lane="-E5_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_south_lane2" lane="-E5_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Tây (-E6) - Approaching J4 from West -->
+    <laneAreaDetector id="e2_J4_west" lane="-E6_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_west_lane1" lane="-E6_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_west_lane2" lane="-E6_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Đông (E3) - Approaching J4 from East (from J1) -->
+    <laneAreaDetector id="e2_J4_east" lane="E3_0" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_east_lane1" lane="E3_1" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    <laneAreaDetector id="e2_J4_east_lane2" lane="E3_2" pos="50.0" endPos="150.0" freq="10" file="NUL"/>
+    
+    
+    <!-- E1 Instant Detectors cho J4 -->
+    
+    <!-- Hướng Bắc (-E4) -->
+    <inductionLoop id="e1_J4_north_0" lane="-E4_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_north_1" lane="-E4_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_north_2" lane="-E4_2" pos="10.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Nam (-E5) -->
+    <inductionLoop id="e1_J4_south_0" lane="-E5_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_south_1" lane="-E5_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_south_2" lane="-E5_2" pos="10.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Tây (-E6) -->
+    <inductionLoop id="e1_J4_west_0" lane="-E6_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_west_1" lane="-E6_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_west_2" lane="-E6_2" pos="10.0" freq="10" file="NUL"/>
+    
+    <!-- Hướng Đông (E3) -->
+    <inductionLoop id="e1_J4_east_0" lane="E3_0" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_east_1" lane="E3_1" pos="10.0" freq="10" file="NUL"/>
+    <inductionLoop id="e1_J4_east_2" lane="E3_2" pos="10.0" freq="10" file="NUL"/>
+
+</additional>

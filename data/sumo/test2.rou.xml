@@ -64,12 +64,12 @@
        lcStrategic="3.0"
        lcSpeedGain="5.0"/>
 
-    <!-- ====== Phân phối tỉ lệ xe theo thực tế TP.HCM (Xe máy 83%, Ô tô 12%, Bus 4%, Xe ưu tiên 1%) ====== -->
-    <vTypeDistribution id="dist_all">
-        <vType id="car_d" vClass="passenger" length="4.5" width="1.8" minGap="1.5" accel="2.8" decel="5.0" sigma="0.6" maxSpeed="50" speedFactor="1.1" speedDev="0.15" color="0,0,1" jmDriveAfterYellowTime="0.5" jmIgnoreFoeProb="0.3" laneChangeModel="LC2013" lcStrategic="1.5" lcSpeedGain="2.0" lcKeepRight="0.8" probability="0.12"/>
-        <vType id="motorcycle_d" vClass="motorcycle" length="2.0" width="0.7" minGap="0.1" accel="3.5" decel="6.0" sigma="0.9" maxSpeed="55" speedFactor="1.25" speedDev="0.2" color="1,0,0" jmDriveAfterYellowTime="0.3" jmDriveAfterRedTime="-1.0" jmIgnoreFoeProb="0.5" jmIgnoreFoeSpeed="2.0" laneChangeModel="LC2013" lcStrategic="2.0" lcSpeedGain="3.0" lcKeepRight="0.3" lcOvertakeRight="1.5" probability="0.83"/>
-        <vType id="bus_d" vClass="bus" length="10" width="2.5" minGap="2.0" accel="1.5" decel="4.5" sigma="0.4" maxSpeed="45" speedFactor="0.95" speedDev="0.1" color="0,1,0" jmDriveAfterYellowTime="1.0" laneChangeModel="LC2013" lcStrategic="1.0" lcSpeedGain="1.0" lcKeepRight="1.2" probability="0.04"/>
-        <vType id="priority_d" vClass="emergency" length="4.5" width="1.8" minGap="1.0" accel="4.0" decel="6.0" sigma="0.2" maxSpeed="70" speedFactor="1.5" speedDev="0.1" guiShape="emergency" emissionClass="HBEFA3/PC_G_EU4" jmDriveAfterRedTime="0" jmDriveAfterRedSpeed="2.0" jmIgnoreFoeProb="1.0" jmIgnoreFoeSpeed="2.0" laneChangeModel="LC2013" lcStrategic="3.0" lcSpeedGain="5.0" probability="0.01"/>
+    <!-- ====== Phân phối tỉ lệ xe theo thực tế TP.HCM ====== -->
+    <!-- Distribution - KHÔNG có xe ưu tiên tự spawn (sẽ spawn thủ công qua dashboard) -->
+    <vTypeDistribution id="dist_normal">
+        <vType id="car_normal" vClass="passenger" length="4.5" width="1.8" minGap="1.5" accel="2.8" decel="5.0" sigma="0.6" maxSpeed="50" speedFactor="1.1" speedDev="0.15" color="0,0,1" jmDriveAfterYellowTime="0.5" jmIgnoreFoeProb="0.3" laneChangeModel="LC2013" lcStrategic="1.5" lcSpeedGain="2.0" lcKeepRight="0.8" probability="0.123"/>
+        <vType id="motorcycle_normal" vClass="motorcycle" length="2.0" width="0.7" minGap="0.1" accel="3.5" decel="6.0" sigma="0.9" maxSpeed="55" speedFactor="1.25" speedDev="0.2" color="1,0,0" jmDriveAfterYellowTime="0.3" jmDriveAfterRedTime="-1.0" jmIgnoreFoeProb="0.5" jmIgnoreFoeSpeed="2.0" laneChangeModel="LC2013" lcStrategic="2.0" lcSpeedGain="3.0" lcKeepRight="0.3" lcOvertakeRight="1.5" probability="0.87"/>
+        <vType id="bus_normal" vClass="bus" length="10" width="2.5" minGap="2.0" accel="1.5" decel="4.5" sigma="0.4" maxSpeed="45" speedFactor="0.95" speedDev="0.1" color="0,1,0" jmDriveAfterYellowTime="1.0" laneChangeModel="LC2013" lcStrategic="1.0" lcSpeedGain="1.0" lcKeepRight="1.2" probability="0.01"/>
     </vTypeDistribution>
 
     <!-- ====== Tuyến đường ====== -->
@@ -109,40 +109,40 @@
     <route id="r28" edges="-E6 -E3 E1"/>
     <route id="r29" edges="-E6 -E3 E2"/>
 
-    <!-- ====== Luồng xe tổng hợp (chạy ngẫu nhiên theo tỉ lệ) ====== -->
-    <flow id="flow_all" type="dist_all" route="r0" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_2" type="dist_all" route="r1" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_3" type="dist_all" route="r2" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_4" type="dist_all" route="r3" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_5" type="dist_all" route="r4" begin="0" end="3600" probability="1.0"/>
+    <!-- ====== Luồng xe tổng hợp (chạy ngẫu nhiên theo tỉ lệ) - KHÔNG có xe ưu tiên ====== -->
+    <flow id="flow_all" type="dist_normal" route="r0" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_2" type="dist_normal" route="r1" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_3" type="dist_normal" route="r2" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_4" type="dist_normal" route="r3" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_5" type="dist_normal" route="r4" begin="0" end="3600" probability="1.0"/>
 
-    <flow id="flow_all_6" type="dist_all" route="r5" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_7" type="dist_all" route="r6" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_8" type="dist_all" route="r7" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_9" type="dist_all" route="r8" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_10" type="dist_all" route="r9" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_6" type="dist_normal" route="r5" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_7" type="dist_normal" route="r6" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_8" type="dist_normal" route="r7" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_9" type="dist_normal" route="r8" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_10" type="dist_normal" route="r9" begin="0" end="3600" probability="1.0"/>
 
-    <flow id="flow_all_11" type="dist_all" route="r10" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_12" type="dist_all" route="r11" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_13" type="dist_all" route="r12" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_14" type="dist_all" route="r13" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_15" type="dist_all" route="r14" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_11" type="dist_normal" route="r10" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_12" type="dist_normal" route="r11" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_13" type="dist_normal" route="r12" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_14" type="dist_normal" route="r13" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_15" type="dist_normal" route="r14" begin="0" end="3600" probability="1.0"/>
 
-    <flow id="flow_all_16" type="dist_all" route="r15" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_17" type="dist_all" route="r16" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_18" type="dist_all" route="r17" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_19" type="dist_all" route="r18" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_20" type="dist_all" route="r19" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_16" type="dist_normal" route="r15" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_17" type="dist_normal" route="r16" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_18" type="dist_normal" route="r17" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_19" type="dist_normal" route="r18" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_20" type="dist_normal" route="r19" begin="0" end="3600" probability="1.0"/>
 
-    <flow id="flow_all_21" type="dist_all" route="r20" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_22" type="dist_all" route="r21" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_23" type="dist_all" route="r22" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_24" type="dist_all" route="r23" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_25" type="dist_all" route="r24" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_21" type="dist_normal" route="r20" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_22" type="dist_normal" route="r21" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_23" type="dist_normal" route="r22" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_24" type="dist_normal" route="r23" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_25" type="dist_normal" route="r24" begin="0" end="3600" probability="1.0"/>
 
-    <flow id="flow_all_26" type="dist_all" route="r25" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_27" type="dist_all" route="r26" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_28" type="dist_all" route="r27" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_29" type="dist_all" route="r28" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_30" type="dist_all" route="r29" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_26" type="dist_normal" route="r25" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_27" type="dist_normal" route="r26" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_28" type="dist_normal" route="r27" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_29" type="dist_normal" route="r28" begin="0" end="3600" probability="1.0"/>
+    <flow id="flow_all_30" type="dist_normal" route="r29" begin="0" end="3600" probability="1.0"/>
 </routes>

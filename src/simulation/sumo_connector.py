@@ -179,13 +179,116 @@ def dieu_chinh_tat_ca_den(phase_durations):
     Điều chỉnh thời gian các phase cho tất cả đèn giao thông trong mô phỏng.
     
     Args:
-        phase_durations: Dict với key là phase_index, value là duration (giây)
+        phase_durations: Dict với format:
+            - Nếu có key 'xanh_chung', 'vang_chung', 'do_toan_phan': fixed-time mode
+            - Nếu có key số (0, 1, ...): adaptive mode
     """
     tls_ids = lay_danh_sach_den_giao_thong()
     if not tls_ids:
         return False
     
-    return dieu_chinh_nhieu_den(tls_ids, phase_durations)
+    # Kiểm tra format của phase_durations
+    if 'xanh_chung' in phase_durations:
+        # Fixed-time mode: tạo chương trình mới với thời gian cố định
+        return tao_chuong_trinh_fixed_time(tls_ids, phase_durations)
+    else:
+        # Adaptive mode (legacy)
+        return dieu_chinh_nhieu_den(tls_ids, phase_durations)
+
+def tao_chuong_trinh_fixed_time(tls_ids, phase_durations):
+    """
+    Tạo chương trình đèn giao thông fixed-time với thời gian tùy chỉnh.
+    
+    Args:
+        tls_ids: List các ID của traffic light systems
+        phase_durations: Dict với keys:
+            - 'xanh_chung': thời gian xanh (giây)
+            - 'vang_chung': thời gian vàng (giây)
+            - 'do_toan_phan': thời gian all-red (giây)
+    """
+    try:
+        if not traci.isLoaded():
+            print("⚠️ SUMO chưa được khởi động.")
+            return False
+        
+        green_time = phase_durations.get('xanh_chung', 30)
+        yellow_time = phase_durations.get('vang_chung', 3)
+        all_red_time = phase_durations.get('do_toan_phan', 2)
+        
+        print(f"\n🚦 Tạo chương trình Fixed-Time:")
+        print(f"   ├─ Xanh: {green_time}s")
+        print(f"   ├─ Vàng: {yellow_time}s")
+        print(f"   └─ All-Red: {all_red_time}s")
+        
+        success_count = 0
+        
+        for tls_id in tls_ids:
+            try:
+                # Lấy logic hiện tại
+                all_logics = traci.trafficlight.getAllProgramLogics(tls_id)
+                
+                if not all_logics:
+                    print(f"⚠️ {tls_id} không có program logic, bỏ qua")
+                    continue
+                
+                # Sử dụng logic đầu tiên (thường là program "0")
+                current_logic = all_logics[0]
+                
+                # Cấu trúc phases chuẩn cho ngã tư 4 hướng:
+                # Phase 0: NS Green (Bắc-Nam xanh, Đông-Tây đỏ)
+                # Phase 1: NS Yellow (Bắc-Nam vàng)
+                # Phase 2: All Red
+                # Phase 3: EW Green (Đông-Tây xanh, Bắc-Nam đỏ)
+                # Phase 4: EW Yellow (Đông-Tây vàng)
+                # Phase 5: All Red
+                
+                if len(current_logic.phases) >= 6:
+                    # Tạo copy của logic để sửa đổi
+                    import copy
+                    new_logic = copy.deepcopy(current_logic)
+                    
+                    # Cập nhật duration cho từng phase
+                    new_logic.phases[0].duration = green_time     # NS Green
+                    new_logic.phases[1].duration = yellow_time    # NS Yellow
+                    new_logic.phases[2].duration = all_red_time   # All Red
+                    new_logic.phases[3].duration = green_time     # EW Green
+                    new_logic.phases[4].duration = yellow_time    # EW Yellow
+                    new_logic.phases[5].duration = all_red_time   # All Red
+                    
+                    # Đặt program ID về "0" (mặc định)
+                    new_logic.programID = "0"
+                    
+                    # Áp dụng logic mới
+                    traci.trafficlight.setProgram(tls_id, "0")
+                    traci.trafficlight.setCompleteRedYellowGreenDefinition(tls_id, new_logic)
+                    
+                    # Đặt phase về 0 để bắt đầu lại chu kỳ
+                    traci.trafficlight.setPhase(tls_id, 0)
+                    
+                    print(f"✅ {tls_id}: Đã cập nhật Fixed-Time (Chu kỳ: {(green_time + yellow_time + all_red_time) * 2}s)")
+                    success_count += 1
+                    
+                else:
+                    print(f"⚠️ {tls_id} chỉ có {len(current_logic.phases)} phases (cần ít nhất 6), bỏ qua")
+                    
+            except Exception as e:
+                print(f"❌ Lỗi khi cập nhật {tls_id}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+        
+        if success_count > 0:
+            print(f"✅ Hoàn thành: {success_count}/{len(tls_ids)} đèn giao thông đã chuyển sang Fixed-Time\n")
+            return True
+        else:
+            print(f"❌ Không thể cấu hình Fixed-Time cho bất kỳ đèn nào\n")
+            return False
+        
+    except Exception as e:
+        print(f"❌ Lỗi khi tạo chương trình Fixed-Time: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def tao_chuong_trinh_den(tls_id, phase_durations):
     """

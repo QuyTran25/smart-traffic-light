@@ -19,11 +19,17 @@ if SRC_ROOT not in sys.path:
 # SUMO connector functions you must have in simulation/sumo_connector.py
 from simulation.sumo_connector import khoi_dong_sumo, dung_sumo, dieu_chinh_tat_ca_den
 from simulation.vehicle_counter import VehicleCounter
+from simulation.sensor_manager import SensorManager
 
 try:
     from controllers.adaptive_controller import AdaptiveController
 except Exception:
     AdaptiveController = None
+
+try:
+    from controllers.priority_controller import PriorityController
+except Exception:
+    PriorityController = None
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -41,6 +47,10 @@ class SmartTrafficApp(ctk.CTk):
         self.paused = False
         self.resetting = False
         self.mode = "Mặc định"  # or "Tự động"
+        
+        # scenario spawning
+        self.scenario_spawning = False
+        self.scenario_thread = None
 
         # default timings (used in Mặc định mode)
         self.green_time = 30
@@ -50,8 +60,18 @@ class SmartTrafficApp(ctk.CTk):
         # controllers dict for adaptive mode
         self.controllers = {}
         
+        # Priority controllers cho từng ngã tư
+        self.priority_controllers = {}  # {junction_id: PriorityController}
+        
         # Vehicle Counter instance
         self.vehicle_counter = None
+        
+        # Sensor Manager instance
+        self.sensor_manager = None
+        
+        # Priority vehicle spawning control
+        self.spawning_active = False
+        self.spawning_thread = None
 
         # KPI & intersection data
         self.global_kpi_data = {
@@ -61,6 +81,14 @@ class SmartTrafficApp(ctk.CTk):
             "Chu kỳ TB": 0,
             "Công bằng": 0.0,
             "Phối hợp": 0
+        }
+        
+        # Sensor data
+        self.sensor_data = {
+            "E1 Detectors": 0,
+            "E2 Detectors": 0,
+            "Mật độ TB": 0,
+            "Queue TB": 0
         }
 
         self.intersection_data = {
@@ -285,15 +313,21 @@ class SmartTrafficApp(ctk.CTk):
         self.content_frame.pack(fill="both", expand=True)
         self.content_frame.grid_rowconfigure(0, weight=0)
         self.content_frame.grid_rowconfigure(1, weight=0)
-        self.content_frame.grid_rowconfigure(2, weight=0, minsize=200)
+        self.content_frame.grid_rowconfigure(2, weight=0)
+        self.content_frame.grid_rowconfigure(3, weight=0, minsize=200)
         self.content_frame.grid_columnconfigure(0, weight=1)
 
         kpi_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         kpi_container.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         self.create_global_kpi_section(kpi_container)
+        
+        # Sensor panel
+        sensor_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        sensor_container.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        self.create_sensor_section(sensor_container)
 
         intersections_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        intersections_container.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        intersections_container.grid(row=2, column=0, sticky="ew", pady=(0, 6))
         intersections_container.grid_columnconfigure(0, weight=1)
         intersections_container.grid_columnconfigure(1, weight=1)
 
@@ -301,7 +335,7 @@ class SmartTrafficApp(ctk.CTk):
         self.create_intersection_section(intersections_container, "Ngã tư 2", 1, "#8b5cf6")
 
         log_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        log_container.grid(row=2, column=0, sticky="nsew")
+        log_container.grid(row=3, column=0, sticky="nsew")
         log_container.grid_rowconfigure(0, weight=1)
         log_container.grid_columnconfigure(0, weight=1)
         self.create_log_section(log_container)
@@ -349,6 +383,54 @@ class SmartTrafficApp(ctk.CTk):
             self.global_kpi_cards[name] = val_label
         for i in range(3):
             kpi_grid.grid_columnconfigure(i, weight=1)
+    
+    def create_sensor_section(self, parent):
+        """Tạo panel hiển thị trạng thái cảm biến"""
+        section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
+        section.pack(fill="x", padx=0, pady=0)
+        
+        # Header
+        header_frame = ctk.CTkFrame(section, fg_color="transparent", height=35)
+        header_frame.pack(fill="x", padx=10, pady=(8, 6))
+        header_frame.pack_propagate(False)
+        ctk.CTkLabel(header_frame, text="📡 Trạng Thái Cảm Biến (Sensors)", font=("Segoe UI", 12, "bold"),
+                     text_color="#0f172a", anchor="w").pack(side="left")
+        
+        # Sensor grid
+        sensor_grid = ctk.CTkFrame(section, fg_color="transparent")
+        sensor_grid.pack(fill="x", padx=8, pady=(0, 8))
+        
+        self.sensor_cards = {}
+        sensor_data = [
+            ("E1 Detectors", "—", "detectors", "#e0f2fe", "#0369a1", "🔵"),
+            ("E2 Detectors", "—", "detectors", "#fef3c7", "#92400e", "🟡"),
+            ("Mật độ TB", "—", "%", "#d1fae5", "#065f46", "📊"),
+            ("Queue TB", "—", "m", "#fecaca", "#991b1b", "🚗"),
+        ]
+        
+        for idx, (name, value, unit, bg_color, text_color, icon) in enumerate(sensor_data):
+            card = ctk.CTkFrame(sensor_grid, fg_color=bg_color, corner_radius=6, width=110, height=60)
+            card.grid(row=0, column=idx, padx=3, pady=3, sticky="ew")
+            card.grid_propagate(False)
+            
+            ctk.CTkLabel(card, text=icon, font=("Segoe UI", 14), text_color=text_color).pack(side="left",
+                                                                                             padx=(6, 4), pady=4)
+            content = ctk.CTkFrame(card, fg_color="transparent")
+            content.pack(side="left", fill="both", expand=True, pady=4, padx=(0, 4))
+            ctk.CTkLabel(content, text=name, font=("Segoe UI", 8, "bold"), text_color="#0f172a", anchor="w").pack(
+                anchor="w")
+            value_frame = ctk.CTkFrame(content, fg_color="transparent")
+            value_frame.pack(anchor="w", fill="x")
+            val_label = ctk.CTkLabel(value_frame, text=value, font=("Segoe UI", 14, "bold"),
+                                     text_color=text_color, anchor="w")
+            val_label.pack(side="left")
+            if unit:
+                ctk.CTkLabel(value_frame, text=f" {unit}", font=("Segoe UI", 8), text_color="#475569", anchor="w").pack(
+                    side="left", pady=(3, 0))
+            self.sensor_cards[name] = val_label
+        
+        for i in range(4):
+            sensor_grid.grid_columnconfigure(i, weight=1)
 
     def create_intersection_section(self, parent, name, column, accent_color):
         section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
@@ -448,15 +530,46 @@ class SmartTrafficApp(ctk.CTk):
         self.mode = value
         self.log(f"✓ Chế độ: {value}")
         self.mode_status_label.configure(text=f"Chế độ: {value}")
+        
         # If switching from Adaptive -> Mặc định, stop controllers
         if value == "Mặc định":
             self.stop_all_controllers()
             self.timing_bar.pack(after=self.control_bar_main, fill="x", pady=(1, 0))
+            
+            # Nếu SUMO đang chạy, áp dụng ngay fixed-time program
+            if self.running:
+                try:
+                    import traci
+                    traci.simulation.getTime()
+                    
+                    # Lấy thời gian hiện tại từ entry fields
+                    try:
+                        green = int(self.green_entry.get())
+                        yellow = int(self.yellow_entry.get())
+                        red = int(self.red_entry.get())
+                    except ValueError:
+                        green = self.green_time
+                        yellow = self.yellow_time
+                        red = self.red_time
+                    
+                    phase_durations = {
+                        'xanh_chung': green,
+                        'vang_chung': yellow,
+                        'do_toan_phan': red
+                    }
+                    
+                    dieu_chinh_tat_ca_den(phase_durations)
+                    self.log(f"✅ Đã chuyển sang chế độ Fixed-Time (Xanh {green}s, Vàng {yellow}s, All-Red {red}s)")
+                    
+                except Exception as e:
+                    self.log(f"⚠ Không thể áp dụng Fixed-Time: {e}")
+        
         # If switching to Adaptive, hide timing and start controllers if running
         if value == "Tự động":
             self.timing_bar.pack_forget()
             if self.running:
                 self.start_controllers_if_needed()
+                self.log("✅ Đã kích hoạt Adaptive Controllers")
 
     # ============ Start / Pause / Stop ============
     def start_sim(self):
@@ -509,6 +622,15 @@ class SmartTrafficApp(ctk.CTk):
         except Exception as e:
             self.log(f"⚠ Không thể khởi tạo Vehicle Counter: {e}")
             self.vehicle_counter = None
+        
+        # Khởi tạo Sensor Manager
+        try:
+            self.sensor_manager = SensorManager()
+            e1_count, e2_count = self.sensor_manager.discover_detectors()
+            self.log(f"✅ Sensor Manager đã phát hiện {e1_count} E1 detectors và {e2_count} E2 detectors")
+        except Exception as e:
+            self.log(f"⚠ Không thể khởi tạo Sensor Manager: {e}")
+            self.sensor_manager = None
 
         # Gọi hàm sinh kịch bản (dựa trên lựa chọn)
         self.apply_scenario_to_sumo(scenario)
@@ -668,6 +790,7 @@ class SmartTrafficApp(ctk.CTk):
             # When finishing (stop), stop controllers and optionally close SUMO
             if not self.paused and not self.resetting:
                 try:
+                    self.stop_scenario_spawning()
                     self.stop_all_controllers()
                     dung_sumo()
                 except Exception:
@@ -821,31 +944,629 @@ class SmartTrafficApp(ctk.CTk):
             # Xử lý theo từng kịch bản
             if scenario_name == "Mặc định":
                 self.log("🚗 Kịch bản mặc định: Lưu lượng đều từ 4 hướng.")
-                # không cần thay đổi gì
+                # Dừng spawning xe ưu tiên nếu có
+                self.stop_priority_spawning()
+                # Spawn xe ưu tiên ngẫu nhiên từ MỌI hướng (khoảng 1 xe mỗi 30s)
+                self.start_default_priority_spawning(interval=30)
 
             elif scenario_name == "SC1 - Xe ưu tiên từ hướng chính trong giờ cao điểm":
-                self.log("🚓 SC1: Tăng lưu lượng từ hướng Bắc & Nam.")
+                self.log("🚓 SC1: Xe ưu tiên từ hướng chính (Bắc/Nam) - Chỉ spawn từ -E1, -E2, -E4, -E5.")
+                # Xóa tất cả xe ưu tiên hiện có (từ dist_normal)
+                self.clear_all_priority_vehicles()
+                # Spawn xe ưu tiên từ Bắc/Nam định kỳ (hướng chính của cả 2 ngã tư)
+                self.start_priority_spawning(["north", "south"], interval=20, scenario_id="SC1")
 
             elif scenario_name == "SC2 - Xe ưu tiên từ hướng nhánh (ít xe) sắp tới gần":
-                self.log("🚙 SC2: Tăng lưu lượng từ hướng Đông & Tây.")
+                self.log("🚙 SC2: Xe ưu tiên từ hướng nhánh (Tây) - Mô phỏng spawn xe.")
+                self.clear_all_priority_vehicles()
+                # Spawn xe ưu tiên từ Tây (hướng nhánh)
+                self.start_priority_spawning(["west"], interval=20, scenario_id="SC2")
 
             elif scenario_name == "SC3 - Nhiều xe ưu tiên từ 2 hướng đối diện":
-                self.log("🚒 SC3: Tăng lưu lượng cả Bắc & Đông, mô phỏng xe ưu tiên đa hướng.")
+                self.log("🚒 SC3: Nhiều xe ưu tiên từ 2 hướng đối diện - Mô phỏng xung đột.")
+                self.clear_all_priority_vehicles()
+                # Spawn NHIỀU xe từ 2 hướng đối diện (test xung đột)
+                self.start_priority_spawning(["north", "south"], interval=3, scenario_id="SC3")
 
             elif scenario_name == "SC4 - Báo giả":
-                self.log("🚨 SC4: Mô phỏng cảm biến báo giả (xe ưu tiên ảo).")
+                self.log("🚨 SC4: Báo giả - Chỉ log thông báo, không spawn xe thật.")
+                self.clear_all_priority_vehicles()
+                # Chỉ log thông báo báo giả, không spawn xe
+                self.start_false_alarm_simulation(interval=30)
 
             elif scenario_name == "SC5 - Xe ưu tiên bị kẹt trong dòng xe dài":
-                self.log("🚓 SC5: Xe ưu tiên xuất hiện nhưng không qua được giao lộ (kẹt xe).")
+                self.log("🚓 SC5: Xe ưu tiên bị kẹt - Spawn xe ở giữa dòng xe (departPos xa).")
+                self.clear_all_priority_vehicles()
+                # Spawn xe ưu tiên ở vị trí xa hơn (50-150m từ đầu route) để kẹt giữa dòng xe
+                self.start_priority_spawning_stuck(["north", "south", "west"], interval=15, scenario_id="SC5")
 
             elif scenario_name == "SC6 - Nhiều xe ưu tiên liên tiếp":
-                self.log("🚑 SC6: Chuỗi xe ưu tiên liên tục — thử thách điều khiển thích ứng.")
+                self.log("🚑 SC6: Nhiều xe ưu tiên liên tiếp - Spawn liên tục từ cùng hướng.")
+                self.clear_all_priority_vehicles()
+                # Spawn liên tiếp xe ưu tiên từ CÙNG hướng (North) mỗi 10-12s
+                # Theo tài liệu: "20s sau lại có xe khác" → interval 10-15s là hợp lý
+                self.start_priority_spawning_consecutive(["north"], base_interval=12, scenario_id="SC6")
 
             else:
                 self.log("ℹ️ Không có kịch bản cụ thể, chạy mặc định.")
 
         except Exception as e:
             self.log(f"⚠ Không thể áp dụng kịch bản: {e}")
+    
+    def switch_flow_distribution(self, dist_id):
+        """
+        Chuyển đổi distribution type cho tất cả flows trong SUMO
+        
+        Args:
+            dist_id: ID của distribution ("dist_normal" hoặc "dist_no_priority")
+        """
+        try:
+            import traci
+            
+            # Lấy tất cả flow IDs
+            all_flows = [f"flow_all_{i}" for i in range(31)]  # flow_all_0 đến flow_all_30
+            
+            changed_count = 0
+            for flow_id in all_flows:
+                try:
+                    # Thay đổi type của flow sang distribution mới
+                    traci.flow.setType(flow_id, dist_id)
+                    changed_count += 1
+                except:
+                    # Flow có thể không tồn tại, bỏ qua
+                    pass
+            
+            self.log(f"✅ Đã chuyển {changed_count} flows sang distribution '{dist_id}'")
+            
+        except Exception as e:
+            self.log(f"⚠️ Lỗi khi chuyển distribution: {e}")
+    
+    def clear_all_priority_vehicles(self):
+        """Xóa tất cả xe ưu tiên hiện có trong simulation"""
+        try:
+            import traci
+            
+            all_vehicles = traci.vehicle.getIDList()
+            removed_count = 0
+            
+            for veh_id in all_vehicles:
+                try:
+                    veh_type = traci.vehicle.getTypeID(veh_id)
+                    # Xóa xe nếu type là priority hoặc có chứa "priority" trong ID
+                    if 'priority' in veh_type.lower() or 'priority' in veh_id.lower():
+                        traci.vehicle.remove(veh_id)
+                        removed_count += 1
+                except:
+                    continue
+            
+            if removed_count > 0:
+                self.log(f"🗑️ Đã xóa {removed_count} xe ưu tiên từ simulation")
+                
+        except Exception as e:
+            self.log(f"⚠️ Lỗi khi xóa xe ưu tiên: {e}")
+    
+    def init_priority_controllers(self):
+        """Khởi tạo Priority Controllers cho các ngã tư"""
+        if PriorityController is None:
+            self.log("⚠️ PriorityController không khả dụng!")
+            return
+        
+        try:
+            import traci
+            tls_ids = traci.trafficlight.getIDList()
+            
+            for tls_id in tls_ids[:2]:  # J1 và J4
+                junction_id = "J1" if tls_ids.index(tls_id) == 0 else "J4"
+                
+                # Lấy adaptive controller tương ứng nếu có
+                adaptive_ctrl = self.controllers.get(tls_id, None)
+                
+                # Tạo Priority Controller
+                priority_ctrl = PriorityController(junction_id=junction_id, adaptive_controller=adaptive_ctrl)
+                
+                # Khởi động controller
+                if priority_ctrl.start():
+                    self.priority_controllers[junction_id] = priority_ctrl
+                    self.log(f"✅ PriorityController [{junction_id}] đã khởi động")
+                else:
+                    self.log(f"❌ Không thể khởi động PriorityController [{junction_id}]")
+        
+        except Exception as e:
+            self.log(f"⚠️ Lỗi khởi tạo Priority Controllers: {e}")
+    
+    def handle_priority_vehicles(self, tls_ids):
+        """
+        Xử lý xe ưu tiên bằng Priority Controller
+        Gọi step() method của controller để tự động xử lý toàn bộ logic
+        """
+        try:
+            if not hasattr(self, 'priority_controllers') or not self.priority_controllers:
+                return
+            
+            # Xử lý cho mỗi junction
+            for junction_id, priority_ctrl in self.priority_controllers.items():
+                try:
+                    # Gọi step() - Controller tự động:
+                    # 1. Quét và phát hiện xe ưu tiên (scan_for_emergency_vehicles)
+                    # 2. Xác nhận xe (confirm_emergency_vehicle)
+                    # 3. Chuyển đổi state machine (NORMAL → DETECTION → SAFE_TRANSITION → PREEMPTION_GREEN)
+                    # 4. Áp dụng pha đèn khẩn cấp (apply_emergency_phase)
+                    # 5. Khôi phục về bình thường (RESTORE)
+                    success = priority_ctrl.step()
+                    
+                    if not success:
+                        continue
+                    
+                    # Lấy status hiện tại và log state changes
+                    status = priority_ctrl.get_status()
+                    current_state = status.get('current_state', 'UNKNOWN')
+                    
+                    # Log state changes
+                    if not hasattr(priority_ctrl, '_last_logged_state') or priority_ctrl._last_logged_state != current_state:
+                        self.log(f"🚦 [{junction_id}] Priority State: {current_state}")
+                        self.log(f"    Detected: {status.get('detected_vehicles', 0)}, Confirmed: {status.get('confirmed_vehicles', 0)}")
+                        priority_ctrl._last_logged_state = current_state
+                
+                except Exception as e:
+                    self.log(f"⚠️ Lỗi trong Priority Controller [{junction_id}]: {e}")
+        
+        except Exception as e:
+            self.log(f"⚠️ Lỗi handle_priority_vehicles: {e}")
+    
+    def start_false_alarm_simulation(self, interval=30):
+        """
+        SC4: Mô phỏng báo giả - Tín hiệu phát hiện xe ưu tiên nhưng không có xe thật
+        Logic: PriorityController sẽ tự động phát hiện và timeout do không xác nhận được xe thật
+        Trong SC4, không spawn xe thật, controller sẽ từ chối false positive nhờ xác nhận kép
+        """
+        def simulate_false_alarm():
+            while self.running and hasattr(self, 'false_alarm_active') and self.false_alarm_active:
+                try:
+                    # Chỉ log - Priority Controller sẽ tự quét và không tìm thấy xe
+                    self.log("⚠️ [SC4-FALSE_ALARM] Chế độ test báo giả - PriorityController đang quét nhưng không phát hiện xe thật.")
+                    
+                    time.sleep(interval)
+                    
+                except Exception as e:
+                    self.log(f"❌ Lỗi trong false alarm simulation: {e}")
+                    break
+        
+        self.false_alarm_active = True
+        threading.Thread(target=simulate_false_alarm, daemon=True).start()
+    
+    def start_default_priority_spawning(self, interval=100):
+        """
+        Spawn xe ưu tiên cho kịch bản Mặc định
+        Mô phỏng 0.3% xe ưu tiên random từ mọi hướng
+        
+        Args:
+            interval: Khoảng thời gian giữa các lần spawn (giây)
+        """
+        # Dừng spawning cũ nếu có
+        self.stop_priority_spawning()
+        
+        # Đánh dấu spawning đang hoạt động
+        self.spawning_active = True
+        
+        def spawn_loop():
+            """Loop spawn xe ưu tiên ngẫu nhiên cho mode Mặc định"""
+            import time
+            import random
+            
+            all_directions = ["north", "south", "east", "west"]
+            
+            while self.spawning_active:
+                try:
+                    # Chọn ngẫu nhiên một hướng
+                    direction = random.choice(all_directions)
+                    self.spawn_priority_vehicle(direction, "DEFAULT")
+                    
+                    # Đợi interval giây
+                    time.sleep(interval)
+                    
+                except Exception as e:
+                    self.log(f"⚠ Lỗi trong default spawn loop: {e}")
+                    time.sleep(5)
+        
+        # Tạo và khởi chạy thread
+        import threading
+        self.spawning_thread = threading.Thread(target=spawn_loop, daemon=True)
+        self.spawning_thread.start()
+        self.log(f"🔄 Đã bắt đầu spawn xe ưu tiên ngẫu nhiên mỗi {interval}s (mode Mặc định)")
+    
+    def get_direction_from_edge(self, edge_id: str, junction_id: str) -> str:
+        """
+        Xác định hướng dựa trên edge ID
+        
+        Returns:
+            "north", "south", "east", "west" hoặc None
+        """
+        # Mapping cho J1
+        if junction_id == "J1":
+            if "-E1" in edge_id:
+                return "north"
+            elif "-E2" in edge_id:
+                return "south"
+            elif "E0" in edge_id and "-E0" not in edge_id:
+                return "west"
+            elif "-E3" in edge_id:  # Từ J4 sang
+                return "east"
+        
+        # Mapping cho J4
+        elif junction_id == "J4":
+            if "-E4" in edge_id:
+                return "north"
+            elif "-E5" in edge_id:
+                return "south"
+            elif "-E6" in edge_id:
+                return "west"
+            elif "E3" in edge_id and "-E3" not in edge_id:  # Từ J1 sang
+                return "east"
+        
+        return None
+    
+    def start_priority_spawning(self, directions, interval=15, scenario_id="SC"):
+        """Bắt đầu spawn xe ưu tiên định kỳ từ các hướng chỉ định
+        
+        Args:
+            directions: List các hướng ["north", "south", "east", "west"]
+            interval: Khoảng thời gian giữa các lần spawn (giây)
+            scenario_id: ID của kịch bản (SC1, SC2, ...)
+        """
+        # Dừng spawning cũ nếu có
+        self.stop_priority_spawning()
+        
+        # Đánh dấu spawning đang hoạt động
+        self.spawning_active = True
+        
+        def spawn_loop():
+            """Loop chạy trong thread riêng để spawn xe định kỳ"""
+            import time
+            import random
+            
+            while self.spawning_active:
+                try:
+                    # Chọn ngẫu nhiên một hướng từ danh sách
+                    direction = random.choice(directions)
+                    self.spawn_priority_vehicle(direction, scenario_id)
+                    
+                    # Đợi interval giây
+                    time.sleep(interval)
+                    
+                except Exception as e:
+                    self.log(f"⚠ Lỗi trong spawn loop: {e}")
+                    time.sleep(5)  # Đợi 5s nếu có lỗi
+        
+        # Tạo và khởi chạy thread
+        import threading
+        self.spawning_thread = threading.Thread(target=spawn_loop, daemon=True)
+        self.spawning_thread.start()
+        self.log(f"🔄 Đã bắt đầu spawn xe ưu tiên từ {directions} mỗi {interval}s")
+    
+    def start_priority_spawning_stuck(self, directions, interval=15, scenario_id="SC5"):
+        """Bắt đầu spawn xe ưu tiên ở VỊ TRÍ XA (giữa dòng xe) để mô phỏng kẹt xe
+        
+        Args:
+            directions: List các hướng ["north", "south", "east", "west"]
+            interval: Khoảng thời gian giữa các lần spawn (giây)
+            scenario_id: ID của kịch bản (mặc định SC5)
+        """
+        # Dừng spawning cũ nếu có
+        self.stop_priority_spawning()
+        
+        # Đánh dấu spawning đang hoạt động
+        self.spawning_active = True
+        
+        def spawn_stuck_loop():
+            """Loop spawn xe ưu tiên SAU dòng xe bình thường (bị kẹt)"""
+            import time
+            import random
+            import traci
+            
+            while self.spawning_active:
+                try:
+                    # Chọn ngẫu nhiên một hướng
+                    direction = random.choice(directions)
+                    
+                    # CÁCH MỚI: Spawn nhiều xe bình thường trước, sau đó spawn xe ưu tiên
+                    # → Xe ưu tiên sẽ tự động xếp SAU dòng xe → BỊ KẸT
+                    
+                    # Route mapping
+                    j1_routes = {
+                        "north": ["r5", "r6", "r7", "r8", "r9"],
+                        "south": ["r10", "r11", "r12", "r13", "r14"],
+                        "west": ["r0", "r1", "r2"],
+                    }
+                    j4_routes = {
+                        "north": ["r15", "r16", "r17", "r18", "r19"],
+                        "south": ["r20", "r21", "r22", "r23", "r24"],
+                        "west": ["r25", "r26", "r27"]
+                    }
+                    
+                    direction_names = {"north": "Bắc", "south": "Nam", "west": "Tây"}
+                    dir_name = direction_names.get(direction, "Không xác định")
+                    
+                    # 1. Spawn 3-5 xe bình thường trước (tạo "dòng xe dài")
+                    num_normal_cars = random.randint(3, 5)
+                    for i in range(num_normal_cars):
+                        if direction in j1_routes:
+                            route = random.choice(j1_routes[direction])
+                            normal_id = f"normal_block_{int(traci.simulation.getTime())}_{i}"
+                            try:
+                                traci.vehicle.add(normal_id, route, typeID="car_normal", departSpeed="max")
+                                time.sleep(0.2)  # Delay nhỏ giữa các xe
+                            except:
+                                pass
+                    
+                    # 2. Đợi 1-2 giây để xe bình thường chạy xa một chút
+                    time.sleep(random.uniform(1, 2))
+                    
+                    # 3. BÂY GIỜ spawn xe ưu tiên → nó sẽ ở SAU dòng xe bình thường → BỊ KẸT!
+                    self.spawn_priority_vehicle(direction, scenario_id, depart_pos="base")
+                    
+                    self.log(f"🚗🚗🚓 SC5: Đã tạo dòng xe {num_normal_cars} xe + 1 xe ưu tiên BỊ KẸT từ {dir_name}")
+                    
+                    # Đợi interval giây
+                    time.sleep(interval)
+                    
+                except Exception as e:
+                    self.log(f"⚠ Lỗi trong spawn stuck loop: {e}")
+                    time.sleep(5)
+        
+        # Tạo và khởi chạy thread
+        import threading
+        self.spawning_thread = threading.Thread(target=spawn_stuck_loop, daemon=True)
+        self.spawning_thread.start()
+        self.log(f"🔄 SC5: Spawn xe BỊ KẸT (spawn sau dòng xe bình thường) từ {directions} mỗi {interval}s")
+    
+    def start_priority_spawning_consecutive(self, directions, base_interval=12, scenario_id="SC6"):
+        """SC6: Spawn nhiều xe ưu tiên LIÊN TIẾP từ cùng hướng
+        
+        Mô phỏng tình huống: Vừa cho xe cứu thương đi qua, 10-20s sau lại có xe khác cùng hướng.
+        
+        Args:
+            directions: List các hướng (thường chỉ 1 hướng cho rõ ràng)
+            base_interval: Khoảng thời gian cơ bản giữa các xe (giây)
+            scenario_id: ID kịch bản (mặc định SC6)
+        """
+        # Dừng spawning cũ nếu có
+        self.stop_priority_spawning()
+        
+        # Đánh dấu spawning đang hoạt động
+        self.spawning_active = True
+        
+        def spawn_consecutive_loop():
+            """Loop spawn xe ưu tiên liên tiếp từ cùng hướng"""
+            import time
+            import random
+            
+            consecutive_count = 0
+            
+            while self.spawning_active:
+                try:
+                    # Luôn chọn cùng 1 hướng (hoặc random từ list nhỏ)
+                    direction = directions[0] if len(directions) == 1 else random.choice(directions)
+                    
+                    # Spawn xe ưu tiên
+                    consecutive_count += 1
+                    self.spawn_priority_vehicle(direction, f"{scenario_id}_consecutive_{consecutive_count}", depart_pos="base")
+                    
+                    direction_names = {"north": "Bắc", "south": "Nam", "west": "Tây"}
+                    dir_name = direction_names.get(direction, "Không xác định")
+                    
+                    # Log tình huống liên tiếp
+                    self.log(f"🚑🚑 SC6-CONSECUTIVE: Xe ưu tiên #{consecutive_count} từ {dir_name} (liên tiếp)")
+                    
+                    # Interval biến đổi nhẹ (10-15s) để mô phỏng thực tế
+                    actual_interval = base_interval + random.uniform(-2, 3)
+                    
+                    # Đợi trước khi spawn xe tiếp theo
+                    time.sleep(actual_interval)
+                    
+                except Exception as e:
+                    self.log(f"⚠ Lỗi trong consecutive spawn loop: {e}")
+                    time.sleep(5)
+        
+        # Tạo và khởi chạy thread
+        import threading
+        self.spawning_thread = threading.Thread(target=spawn_consecutive_loop, daemon=True)
+        self.spawning_thread.start()
+        self.log(f"🔄 SC6: Spawn xe ưu tiên LIÊN TIẾP từ {directions} mỗi ~{base_interval}s (±2-3s)")
+    
+    def start_false_alarm_simulation(self, interval=30):
+        """Mô phỏng báo giả - spawn xe rồi xóa ngay để giả lập tín hiệu sai
+        
+        Args:
+            interval: Khoảng thời gian giữa các lần báo giả (giây)
+        """
+        # Dừng spawning cũ nếu có
+        self.stop_priority_spawning()
+        
+        # Đánh dấu spawning đang hoạt động
+        self.spawning_active = True
+        
+        def false_alarm_loop():
+            """Loop chạy trong thread để tạo tín hiệu báo giả"""
+            import time
+            import random
+            
+            directions = ["north", "south", "west"]
+            direction_names = {"north": "Bắc", "south": "Nam", "west": "Tây"}
+            
+            while self.spawning_active:
+                try:
+                    # Chọn ngẫu nhiên hướng
+                    direction = random.choice(directions)
+                    dir_name = direction_names.get(direction, "Không xác định")
+                    
+                    # Spawn xe để tạo tín hiệu
+                    self.log(f"⚠️ BÁOGIẢ - Phát hiện tín hiệu xe ưu tiên từ {dir_name}")
+                    spawned_vehicles = self.spawn_priority_vehicle(direction, "SC4_FALSE")
+                    
+                    # Đợi 2-3 giây (giả lập thời gian phát hiện)
+                    time.sleep(random.uniform(2, 3))
+                    
+                    # Xóa xe ngay (mô phỏng báo giả - xe không thật)
+                    if spawned_vehicles:
+                        try:
+                            import traci
+                            for veh_id in spawned_vehicles:
+                                if veh_id in traci.vehicle.getIDList():
+                                    traci.vehicle.remove(veh_id)
+                            self.log(f"🗑️ BÁOGIẢ - Đã xóa xe giả [{len(spawned_vehicles)} xe] - Tín hiệu sai!")
+                        except Exception as remove_err:
+                            self.log(f"⚠ Lỗi khi xóa xe báo giả: {remove_err}")
+                    
+                    # Đợi interval giây trước lần báo giả tiếp theo
+                    time.sleep(interval)
+                    
+                except Exception as e:
+                    self.log(f"⚠ Lỗi trong false alarm loop: {e}")
+                    time.sleep(5)
+        
+        # Tạo và khởi chạy thread
+        import threading
+        self.spawning_thread = threading.Thread(target=false_alarm_loop, daemon=True)
+        self.spawning_thread.start()
+        self.log(f"🔄 Đã bắt đầu mô phỏng báo giả mỗi {interval}s (spawn xe → xóa ngay)")
+    
+    def stop_priority_spawning(self):
+        """Dừng việc spawn xe ưu tiên"""
+        if self.spawning_active:
+            self.spawning_active = False
+            if self.spawning_thread:
+                self.spawning_thread.join(timeout=2)
+            self.log("⏹ Đã dừng spawn xe ưu tiên")
+    
+    def spawn_priority_vehicle(self, direction, scenario_id, depart_pos="base"):
+        """Spawn một xe ưu tiên từ hướng chỉ định - ở CẢ 2 ngã tư (J1 và J4)
+        
+        Args:
+            direction: Hướng spawn ("north", "south", "west")
+            scenario_id: ID kịch bản (SC1, SC2, SC5...)
+            depart_pos: Vị trí spawn - "base" (đầu route) hoặc số mét từ đầu route
+        
+        Returns:
+            List các vehicle ID đã spawn thành công (để xóa trong trường hợp false alarm)
+        """
+        spawned_vehicle_ids = []
+        
+        try:
+            import traci
+            current_time = traci.simulation.getTime()
+            
+            # Đếm số xe ưu tiên hiện tại
+            all_vehicles = traci.vehicle.getIDList()
+            priority_count = sum(1 for v in all_vehicles if 'priority' in v)
+            
+            # Định nghĩa routes cho CẢ 2 ngã tư
+            # Ngã tư J1 (giao lộ chính với E0, E1, E2, E3)
+            j1_routes = {
+                "north": ["r5", "r6", "r7", "r8", "r9"],     # Từ Bắc (-E1) J1 - hướng chính
+                "south": ["r10", "r11", "r12", "r13", "r14"],  # Từ Nam (-E2) J1 - hướng chính
+                "west": ["r0", "r1", "r2"],      # Từ Tây (E0) J1 - hướng nhánh
+            }
+            
+            # Ngã tư J4 (giao lộ phụ với E4, E5, E6, E3)
+            j4_routes = {
+                "north": ["r15", "r16", "r17", "r18", "r19"],         # Từ Bắc (-E4) J4 - hướng chính
+                "south": ["r20", "r21", "r22", "r23", "r24"],  # Từ Nam (-E5) J4 - hướng chính
+                "west": ["r25", "r26", "r27"]    # Từ Tây (-E6) J4 - hướng nhánh
+            }
+            
+            direction_names = {
+                "north": "Bắc",
+                "south": "Nam", 
+                "east": "Đông",
+                "west": "Tây"
+            }
+            
+            dir_name = direction_names.get(direction, "Không xác định")
+            
+            # Spawn xe ở CẢNG 2 ngã tư
+            import random
+            spawned_count = 0
+            
+            # 1. Spawn ở ngã tư J1
+            if direction in j1_routes:
+                route_j1 = random.choice(j1_routes[direction])
+                veh_id_j1 = f"priority_{scenario_id}_{direction}_J1_{int(current_time)}"
+                
+                try:
+                    # Convert depart_pos to proper format for SUMO
+                    if isinstance(depart_pos, (int, float)):
+                        pos_param = str(float(depart_pos))
+                    else:
+                        pos_param = depart_pos
+                    
+                    traci.vehicle.add(
+                        veh_id_j1, 
+                        route_j1, 
+                        typeID="priority",
+                        departPos=pos_param,
+                        departSpeed="random",
+                        departLane="best"
+                    )
+                    
+                    # Kiểm tra spawn thành công
+                    import time
+                    time.sleep(0.3)
+                    if veh_id_j1 in traci.vehicle.getIDList():
+                        edge = traci.vehicle.getRoadID(veh_id_j1)
+                        spawned_count += 1
+                        spawned_vehicle_ids.append(veh_id_j1)
+                        pos_info = f"@ {depart_pos}m" if isinstance(depart_pos, (int, float)) else "đầu route"
+                        self.log(f"✅ Spawn xe ưu tiên từ {dir_name} tại J1 [{veh_id_j1}] - Edge: {edge} ({pos_info})")
+                except Exception as e:
+                    # Log lỗi nếu spawn thất bại
+                    if "depart" in str(e).lower():
+                        self.log(f"⚠ J1: departPos {depart_pos}m quá xa, thử lại với 'base'")
+                    pass
+            
+            # 2. Spawn ở ngã tư J4
+            if direction in j4_routes:
+                route_j4 = random.choice(j4_routes[direction])
+                veh_id_j4 = f"priority_{scenario_id}_{direction}_J4_{int(current_time)}"
+                
+                try:
+                    # Convert depart_pos to proper format for SUMO
+                    if isinstance(depart_pos, (int, float)):
+                        pos_param = str(float(depart_pos))
+                    else:
+                        pos_param = depart_pos
+                    
+                    traci.vehicle.add(
+                        veh_id_j4, 
+                        route_j4, 
+                        typeID="priority",
+                        departPos=pos_param,
+                        departSpeed="random",
+                        departLane="best"
+                    )
+                    
+                    # Kiểm tra spawn thành công
+                    import time
+                    time.sleep(0.3)
+                    if veh_id_j4 in traci.vehicle.getIDList():
+                        edge = traci.vehicle.getRoadID(veh_id_j4)
+                        spawned_count += 1
+                        spawned_vehicle_ids.append(veh_id_j4)
+                        pos_info = f"@ {depart_pos}m" if isinstance(depart_pos, (int, float)) else "đầu route"
+                        self.log(f"✅ Spawn xe ưu tiên từ {dir_name} tại J4 [{veh_id_j4}] - Edge: {edge} ({pos_info})")
+                except Exception as e:
+                    # Log lỗi nếu spawn thất bại
+                    if "depart" in str(e).lower():
+                        self.log(f"⚠ J4: departPos {depart_pos}m quá xa, thử lại với 'base'")
+                    pass
+            
+            if spawned_count > 0:
+                self.log(f"📊 Đã spawn {spawned_count} xe ưu tiên từ hướng {dir_name} (Tổng: {priority_count + spawned_count} xe)")
+                
+        except Exception as e:
+            # Bỏ qua lỗi tổng quát
+            pass
+        
+        return spawned_vehicle_ids
 
     # ============ Update data from SUMO & UI ============
     def update_data_from_sumo(self):
@@ -880,6 +1601,11 @@ class SmartTrafficApp(ctk.CTk):
                 except Exception as vc_err:
                     self.log(f"⚠ Lỗi khi đếm xe qua VehicleCounter: {vc_err}")
                     vehicle_counts = None
+            
+            # === Đếm xe ưu tiên hiện tại ===
+            all_vehicles = traci.vehicle.getIDList()
+            priority_vehicles = [v for v in all_vehicles if 'priority' in v.lower()]
+            # Không log số xe ưu tiên nữa để tránh spam
 
             # === BƯỚC 2: Cập nhật dữ liệu cho từng ngã tư ===
             for i, tls_id in enumerate(tls_ids[:2]):
@@ -938,6 +1664,7 @@ class SmartTrafficApp(ctk.CTk):
                     self.intersection_data[int_name]["queue"] = 0
                     self.intersection_data[int_name]["wait_time"] = 0
 
+
             # --- Công bằng (Fairness) ---
             queues = [data["queue"] for data in self.intersection_data.values()]
             if len(queues) > 0 and sum(queues) > 0:
@@ -977,6 +1704,41 @@ class SmartTrafficApp(ctk.CTk):
                 "Công bằng": fairness,
                 "Phối hợp": round(coordination, 1)
             }
+            
+            # --- Cập nhật dữ liệu cảm biến ---
+            if self.sensor_manager:
+                try:
+                    # Lấy tổng số detectors
+                    summary = self.sensor_manager.get_summary()
+                    
+                    # Tính mật độ và queue trung bình từ E2 detectors
+                    total_occupancy = 0
+                    total_queue = 0
+                    e2_count = 0
+                    
+                    for junction_id in ["J1", "J4"]:
+                        densities = self.sensor_manager.get_all_junction_densities(junction_id)
+                        for direction, data in densities.items():
+                            if "error" not in data:
+                                # Tính occupancy từ số xe (simplified)
+                                occupancy = min(100, data["total_vehicles"] * 10)  # Rough estimate
+                                total_occupancy += occupancy
+                                total_queue += data["queue_length"]
+                                e2_count += 1
+                    
+                    avg_occupancy = round(total_occupancy / e2_count, 1) if e2_count > 0 else 0
+                    avg_queue = round(total_queue / e2_count, 1) if e2_count > 0 else 0
+                    
+                    # Cập nhật sensor data
+                    self.sensor_data = {
+                        "E1 Detectors": summary.get("e1_count", 0),
+                        "E2 Detectors": summary.get("e2_count", 0),
+                        "Mật độ TB": avg_occupancy,
+                        "Queue TB": avg_queue
+                    }
+                except Exception as sensor_err:
+                    # Nếu lỗi, giữ nguyên dữ liệu cũ
+                    pass
 
         except Exception as e:
             import traceback
@@ -996,6 +1758,13 @@ class SmartTrafficApp(ctk.CTk):
                     for direction, count in data["vehicles"].items():
                         if direction in widgets["directions"]:
                             widgets["directions"][direction].configure(text=str(count))
+            
+            # Cập nhật sensor cards
+            if hasattr(self, 'sensor_data') and hasattr(self, 'sensor_cards'):
+                for key, value in self.sensor_data.items():
+                    if key in self.sensor_cards:
+                        self.sensor_cards[key].configure(text=str(value))
+            
             # occasional logs
             events = ["Cập nhật trạng thái đèn giao thông", "Phát hiện thay đổi lưu lượng", "Điều chỉnh chu kỳ đèn",
                       "Hệ thống hoạt động ổn định"]
