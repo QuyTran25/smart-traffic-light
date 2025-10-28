@@ -147,6 +147,11 @@ class SmartTrafficApp(ctk.CTk):
         self.mode_status_label = ctk.CTkLabel(status_frame, text="Chế độ: Mặc định", font=("Segoe UI", 10),
                                               text_color="#64748b")
         self.mode_status_label.pack()
+        
+        # Priority status label (hiển thị khi có xe ưu tiên)
+        self.priority_status_label = ctk.CTkLabel(status_frame, text="", font=("Segoe UI", 10, "bold"),
+                                                  text_color="#ef4444")
+        self.priority_status_label.pack()
 
         # Control bar
         self.control_bar_main = ctk.CTkFrame(self.scrollable_frame, fg_color="#ffffff", corner_radius=0)
@@ -725,10 +730,15 @@ class SmartTrafficApp(ctk.CTk):
                         self.log(f"🤖 Adaptive controller started for {tls_id}")
                     else:
                         self.log(f"⚠️ Không thể khởi động AdaptiveController cho {tls_id}")
+            
+            # Khởi động Priority Controllers
+            self.init_priority_controllers()
+            
         except Exception as e:
             self.log(f"⚠ Lỗi khi khởi tạo controllers: {e}")
 
     def stop_all_controllers(self):
+        # Stop adaptive controllers
         for tls_id, ctrl in list(self.controllers.items()):
             try:
                 ctrl.stop()
@@ -736,8 +746,18 @@ class SmartTrafficApp(ctk.CTk):
                 pass
             self.controllers.pop(tls_id, None)
         if self.controllers:
-            self.log("🛑 Dừng tất cả controllers")
+            self.log("🛑 Dừng tất cả adaptive controllers")
         self.controllers = {}
+        
+        # Stop priority controllers
+        if hasattr(self, 'priority_controllers') and self.priority_controllers:
+            for junction_id, priority_ctrl in list(self.priority_controllers.items()):
+                try:
+                    priority_ctrl.stop()
+                except Exception:
+                    pass
+            self.log("🛑 Dừng tất cả priority controllers")
+            self.priority_controllers = {}
 
     # ============ Simulation loop ============
     def simulate_with_sumo(self):
@@ -773,6 +793,14 @@ class SmartTrafficApp(ctk.CTk):
                                 ctrl.step()
                             except Exception as e:
                                 self.log(f"⚠ Controller {tls_id} step error: {e}")
+                    
+                    # priority controllers step (xe ưu tiên)
+                    if hasattr(self, 'priority_controllers') and self.priority_controllers:
+                        for junction_id, priority_ctrl in list(self.priority_controllers.items()):
+                            try:
+                                priority_ctrl.step()
+                            except Exception as e:
+                                self.log(f"⚠ PriorityController {junction_id} step error: {e}")
 
                     # update UI data & redraw
                     self.update_data_from_sumo()
@@ -1061,8 +1089,12 @@ class SmartTrafficApp(ctk.CTk):
                 # Lấy adaptive controller tương ứng nếu có
                 adaptive_ctrl = self.controllers.get(tls_id, None)
                 
-                # Tạo Priority Controller
-                priority_ctrl = PriorityController(junction_id=junction_id, adaptive_controller=adaptive_ctrl)
+                # Tạo Priority Controller với UI callback
+                priority_ctrl = PriorityController(
+                    junction_id=junction_id, 
+                    adaptive_controller=adaptive_ctrl,
+                    ui_callback=self.on_priority_state_change  # Callback để update UI
+                )
                 
                 # Khởi động controller
                 if priority_ctrl.start():
@@ -1073,6 +1105,60 @@ class SmartTrafficApp(ctk.CTk):
         
         except Exception as e:
             self.log(f"⚠️ Lỗi khởi tạo Priority Controllers: {e}")
+    
+    def on_priority_state_change(self, junction_id, state, vehicle):
+        """
+        Callback được gọi khi PriorityController thay đổi state
+        Cập nhật UI để hiển thị trạng thái ưu tiên rõ ràng
+        
+        Args:
+            junction_id: ID ngã tư (J1, J4)
+            state: Trạng thái mới (NORMAL, DETECTION, PREEMPTION_GREEN, etc.)
+            vehicle: EmergencyVehicle object hoặc None
+        """
+        try:
+            # Map state sang tiếng Việt và màu sắc
+            state_info = {
+                "NORMAL": ("⚪ Bình thường", "#64748b"),
+                "DETECTION": ("🔍 PHÁT HIỆN XE ƯU TIÊN", "#f59e0b"),
+                "SAFE_TRANSITION": ("⚠️ CHUYỂN ĐỔI AN TOÀN", "#f59e0b"),
+                "PREEMPTION_GREEN": ("🚨 ƯU TIÊN ĐANG HOẠT ĐỘNG", "#ef4444"),
+                "HOLD_PREEMPTION": ("⏳ GIỮ ĐÈN XANH", "#ef4444"),
+                "RESTORE": ("🔄 KHÔI PHỤC", "#10b981")
+            }
+            
+            text, color = state_info.get(state, ("", "#64748b"))
+            
+            # Cập nhật priority status label
+            if state == "NORMAL":
+                self.priority_status_label.configure(text="")
+            else:
+                veh_info = ""
+                if vehicle:
+                    veh_info = f" - {vehicle.vehicle_id}"
+                self.priority_status_label.configure(
+                    text=f"[{junction_id}] {text}{veh_info}",
+                    text_color=color
+                )
+            
+            # Log chi tiết với màu
+            if state != "NORMAL":
+                emoji_map = {
+                    "DETECTION": "🔍",
+                    "SAFE_TRANSITION": "🚦",
+                    "PREEMPTION_GREEN": "🚨",
+                    "HOLD_PREEMPTION": "⏳",
+                    "RESTORE": "🔄"
+                }
+                emoji = emoji_map.get(state, "📍")
+                
+                if vehicle:
+                    self.log(f"{emoji} [{junction_id}] {text} - Xe: {vehicle.vehicle_id} ({vehicle.direction})")
+                else:
+                    self.log(f"{emoji} [{junction_id}] {text}")
+                    
+        except Exception as e:
+            print(f"⚠️ Error in UI callback: {e}")
     
     def handle_priority_vehicles(self, tls_ids):
         """
@@ -1513,10 +1599,14 @@ class SmartTrafficApp(ctk.CTk):
                     time.sleep(0.3)
                     if veh_id_j1 in traci.vehicle.getIDList():
                         edge = traci.vehicle.getRoadID(veh_id_j1)
+                        
+                        # ĐỔI MÀU XE ƯU TIÊN ĐỂ DỄ NHÌN - Màu đỏ nổi bật
+                        traci.vehicle.setColor(veh_id_j1, (255, 0, 0, 255))  # Đỏ rực
+                        
                         spawned_count += 1
                         spawned_vehicle_ids.append(veh_id_j1)
                         pos_info = f"@ {depart_pos}m" if isinstance(depart_pos, (int, float)) else "đầu route"
-                        self.log(f"✅ Spawn xe ưu tiên từ {dir_name} tại J1 [{veh_id_j1}] - Edge: {edge} ({pos_info})")
+                        self.log(f"🚨 Spawn xe ưu tiên từ {dir_name} tại J1 [{veh_id_j1}] - Edge: {edge} ({pos_info})")
                 except Exception as e:
                     # Log lỗi nếu spawn thất bại
                     if "depart" in str(e).lower():
@@ -1549,10 +1639,14 @@ class SmartTrafficApp(ctk.CTk):
                     time.sleep(0.3)
                     if veh_id_j4 in traci.vehicle.getIDList():
                         edge = traci.vehicle.getRoadID(veh_id_j4)
+                        
+                        # ĐỔI MÀU XE ƯU TIÊN ĐỂ DỄ NHÌN - Màu đỏ nổi bật
+                        traci.vehicle.setColor(veh_id_j4, (255, 0, 0, 255))  # Đỏ rực
+                        
                         spawned_count += 1
                         spawned_vehicle_ids.append(veh_id_j4)
                         pos_info = f"@ {depart_pos}m" if isinstance(depart_pos, (int, float)) else "đầu route"
-                        self.log(f"✅ Spawn xe ưu tiên từ {dir_name} tại J4 [{veh_id_j4}] - Edge: {edge} ({pos_info})")
+                        self.log(f"🚨 Spawn xe ưu tiên từ {dir_name} tại J4 [{veh_id_j4}] - Edge: {edge} ({pos_info})")
                 except Exception as e:
                     # Log lỗi nếu spawn thất bại
                     if "depart" in str(e).lower():

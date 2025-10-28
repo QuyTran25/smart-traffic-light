@@ -80,6 +80,24 @@ class AdaptiveController:
         self.pressure_history: Dict[TrafficDirection, List[float]] = defaultdict(list)
         self.phase_history: List[Tuple[TrafficPhase, float, float]] = []  # (phase, start_time, duration)
         
+        # Green debt system (cho PriorityController)
+        self.green_debts: Dict[str, float] = defaultdict(float)  # {"Bắc": 10.5, "Nam": 5.2, ...}
+        
+        # Emergency mode params (SC6)
+        self.normal_min_green = self.T_MIN_GREEN
+        self.normal_max_green = self.T_MAX_GREEN
+        self.emergency_min_green = 12.0
+        self.emergency_max_green = 90.0
+        
+        # Starvation prevention (chống bỏ đói)
+        self.MAX_WAITING_TIME = 120.0  # Thời gian chờ tối đa (giây)
+        self.CRITICAL_WAITING_TIME = 60.0  # Thời gian cảnh báo (giây)
+        self.last_green_time: Dict[TrafficDirection, float] = {}  # Lần xanh cuối cho mỗi hướng
+        
+        # Khởi tạo last_green_time
+        for direction in TrafficDirection:
+            self.last_green_time[direction] = 0.0
+        
     def get_vehicle_count_by_direction(self, direction: TrafficDirection) -> int:
         """
         Đếm số xe theo hướng từ các edges tương ứng
@@ -195,7 +213,7 @@ class AdaptiveController:
         """
         Tính thời gian xanh động cho một hướng
         
-        Công thức: G = T_min + α × Queue_length(PCU)
+        Công thức: G = T_min + α × Queue_length(PCU) + Green_Debt_Compensation
         
         Args:
             direction: Hướng cần tính thời gian xanh
@@ -205,6 +223,21 @@ class AdaptiveController:
         """
         queue_pcu = self.convert_to_pcu(direction)
         green_time = self.T_MIN_GREEN + (self.ALPHA * queue_pcu)
+        
+        # ✅ BÙ NỢ THỜI GIAN XANH (từ PriorityController)
+        direction_name = direction.value  # "Bắc", "Nam", "Đông", "Tây"
+        
+        if direction_name in self.green_debts and self.green_debts[direction_name] > 0:
+            debt = self.green_debts[direction_name]
+            
+            # Bù một phần (30% mỗi chu kỳ để không quá đột ngột)
+            compensation = min(debt * 0.3, 15.0)  # Tối đa bù 15s mỗi lần
+            green_time += compensation
+            
+            # Trừ nợ
+            self.green_debts[direction_name] -= compensation
+            
+            print(f"💰 {direction_name}: Bù {compensation:.1f}s (Nợ còn: {self.green_debts[direction_name]:.1f}s)")
         
         # Giới hạn trong khoảng [T_MIN_GREEN, T_MAX_GREEN]
         green_time = max(self.T_MIN_GREEN, min(green_time, self.T_MAX_GREEN))
@@ -229,6 +262,79 @@ class AdaptiveController:
         
         return max(self.ALL_RED_BASE, total_all_red)
     
+    def calculate_waiting_time(self, direction: TrafficDirection) -> float:
+        """
+        Tính thời gian chờ của một hướng từ lần xanh cuối cùng
+        
+        Args:
+            direction: Hướng cần tính
+            
+        Returns:
+            Thời gian chờ (giây)
+        """
+        try:
+            current_time = traci.simulation.getTime()
+            last_green = self.last_green_time.get(direction, 0.0)
+            
+            if last_green == 0.0:
+                # Chưa từng được xanh, trả về 0
+                return 0.0
+            
+            waiting_time = current_time - last_green
+            return waiting_time
+            
+        except Exception as e:
+            print(f"❌ Lỗi khi tính waiting time cho {direction.value}: {e}")
+            return 0.0
+    
+    def check_starvation_prevention(self) -> Tuple[bool, Optional[TrafficPhase]]:
+        """
+        Kiểm tra cơ chế chống bỏ đói (Starvation Prevention)
+        
+        Nếu một hướng chờ quá lâu (> MAX_WAITING_TIME), buộc chuyển pha cho hướng đó
+        
+        Returns:
+            Tuple (should_force_change: bool, force_phase: TrafficPhase)
+        """
+        current_time = traci.simulation.getTime()
+        
+        # Kiểm tra từng hướng
+        for direction in TrafficDirection:
+            waiting_time = self.calculate_waiting_time(direction)
+            
+            # Cảnh báo nếu vượt ngưỡng critical
+            if waiting_time > self.CRITICAL_WAITING_TIME and waiting_time <= self.MAX_WAITING_TIME:
+                queue_pcu = self.convert_to_pcu(direction)
+                if queue_pcu > 0:  # Chỉ cảnh báo nếu có xe chờ
+                    print(f"⚠️ STARVATION WARNING: {direction.value} đã chờ {waiting_time:.0f}s (Queue: {queue_pcu:.1f} PCU)")
+            
+            # Buộc chuyển pha nếu vượt MAX_WAITING_TIME
+            if waiting_time > self.MAX_WAITING_TIME:
+                queue_pcu = self.convert_to_pcu(direction)
+                
+                # Chỉ buộc chuyển nếu có xe chờ
+                if queue_pcu > 0:
+                    print(f"🚨 STARVATION PREVENTION ACTIVATED!")
+                    print(f"   {direction.value} đã chờ {waiting_time:.0f}s (> {self.MAX_WAITING_TIME:.0f}s)")
+                    print(f"   Queue: {queue_pcu:.1f} PCU")
+                    print(f"   → Buộc chuyển pha cho hướng này!")
+                    
+                    # Xác định pha cần chuyển
+                    if direction in [TrafficDirection.NORTH, TrafficDirection.SOUTH]:
+                        # Cần pha NS_GREEN
+                        if self.current_phase == TrafficPhase.NS_GREEN:
+                            return False, None  # Đã đang xanh
+                        else:
+                            return True, TrafficPhase.NS_YELLOW  # Chuyển sang NS
+                    else:  # EAST hoặc WEST
+                        # Cần pha EW_GREEN
+                        if self.current_phase == TrafficPhase.EW_GREEN:
+                            return False, None  # Đã đang xanh
+                        else:
+                            return True, TrafficPhase.EW_YELLOW  # Chuyển sang EW
+        
+        return False, None
+    
     def get_direction_priorities(self) -> Dict[TrafficDirection, float]:
         """
         Tính độ ưu tiên cho tất cả các hướng
@@ -251,6 +357,11 @@ class AdaptiveController:
         """
         current_time = traci.simulation.getTime()
         phase_duration = current_time - self.phase_start_time
+        
+        # ✅ BƯỚC 1: Kiểm tra starvation prevention (ưu tiên cao nhất)
+        should_force, force_phase = self.check_starvation_prevention()
+        if should_force and force_phase:
+            return True, force_phase
         
         # Đảm bảo đã đủ thời gian xanh tối thiểu
         if phase_duration < self.T_MIN_GREEN:
@@ -310,6 +421,14 @@ class AdaptiveController:
                     if self.phase_start_time > 0:
                         duration = current_time - self.phase_start_time
                         self.phase_history.append((self.current_phase, self.phase_start_time, duration))
+                    
+                    # ✅ Cập nhật last_green_time khi chuyển sang pha GREEN
+                    if phase == TrafficPhase.NS_GREEN:
+                        self.last_green_time[TrafficDirection.NORTH] = current_time
+                        self.last_green_time[TrafficDirection.SOUTH] = current_time
+                    elif phase == TrafficPhase.EW_GREEN:
+                        self.last_green_time[TrafficDirection.EAST] = current_time
+                        self.last_green_time[TrafficDirection.WEST] = current_time
                     
                     self.current_phase = phase
                     self.phase_start_time = current_time
@@ -482,3 +601,48 @@ class AdaptiveController:
         except Exception as e:
             print(f"❌ Lỗi khi tính thống kê: {e}")
             return {'error': str(e)}
+    
+    def add_green_debt(self, direction: str, debt_time: float):
+        """
+        Thêm 'nợ' thời gian xanh cho một hướng
+        Sẽ được bù trong chu kỳ tiếp theo
+        
+        Args:
+            direction: Hướng bị ảnh hưởng ("Bắc", "Nam", "Đông", "Tây")
+            debt_time: Thời gian xanh bị mất (giây)
+        """
+        self.green_debts[direction] += debt_time
+        print(f"💳 {direction}: Nợ thêm {debt_time:.1f}s → Tổng nợ: {self.green_debts[direction]:.1f}s")
+    
+    def get_phase_elapsed_time(self, current_time: float) -> float:
+        """
+        Trả về thời gian đã trôi qua của pha hiện tại
+        Dùng cho PriorityController kiểm tra safe_min_green
+        
+        Args:
+            current_time: Thời gian hiện tại
+            
+        Returns:
+            Thời gian đã trôi qua (giây)
+        """
+        return current_time - self.phase_start_time
+    
+    def set_emergency_params(self, min_green: float, max_green: float):
+        """
+        SC6: Điều chỉnh tham số khi emergency mode
+        
+        Args:
+            min_green: Thời gian xanh tối thiểu mới
+            max_green: Thời gian xanh tối đa mới
+        """
+        self.T_MIN_GREEN = min_green
+        self.T_MAX_GREEN = max_green
+        print(f"🚨 Emergency params: min_green={min_green}s, max_green={max_green}s")
+    
+    def restore_normal_params(self):
+        """
+        SC6: Khôi phục tham số bình thường sau emergency mode
+        """
+        self.T_MIN_GREEN = self.normal_min_green
+        self.T_MAX_GREEN = self.normal_max_green
+        print(f"✅ Khôi phục tham số adaptive: min_green={self.T_MIN_GREEN}s, max_green={self.T_MAX_GREEN}s")
