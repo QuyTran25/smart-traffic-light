@@ -106,6 +106,13 @@ class SmartTrafficApp(ctk.CTk):
             }
         }
 
+        # Priority vehicle tracking
+        self.priority_vehicle_data = {
+            "J1": {"Bắc": 0, "Nam": 0, "Đông": 0, "Tây": 0},
+            "J4": {"Bắc": 0, "Nam": 0, "Đông": 0, "Tây": 0}
+        }
+        self.has_priority_vehicles = False
+
         # Build UI
         self.create_layout()
 
@@ -319,7 +326,8 @@ class SmartTrafficApp(ctk.CTk):
         self.content_frame.grid_rowconfigure(0, weight=0)
         self.content_frame.grid_rowconfigure(1, weight=0)
         self.content_frame.grid_rowconfigure(2, weight=0)
-        self.content_frame.grid_rowconfigure(3, weight=0, minsize=200)
+        self.content_frame.grid_rowconfigure(3, weight=0)
+        self.content_frame.grid_rowconfigure(4, weight=0, minsize=200)
         self.content_frame.grid_columnconfigure(0, weight=1)
 
         kpi_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
@@ -331,8 +339,12 @@ class SmartTrafficApp(ctk.CTk):
         sensor_container.grid(row=1, column=0, sticky="ew", pady=(0, 6))
         self.create_sensor_section(sensor_container)
 
+        # Priority Vehicle Panel (ẩn mặc định)
+        self.priority_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.create_priority_vehicle_section(self.priority_container)
+
         intersections_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        intersections_container.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        intersections_container.grid(row=3, column=0, sticky="ew", pady=(0, 6))
         intersections_container.grid_columnconfigure(0, weight=1)
         intersections_container.grid_columnconfigure(1, weight=1)
 
@@ -340,7 +352,7 @@ class SmartTrafficApp(ctk.CTk):
         self.create_intersection_section(intersections_container, "Ngã tư 2", 1, "#8b5cf6")
 
         log_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        log_container.grid(row=3, column=0, sticky="nsew")
+        log_container.grid(row=4, column=0, sticky="nsew")
         log_container.grid_rowconfigure(0, weight=1)
         log_container.grid_columnconfigure(0, weight=1)
         self.create_log_section(log_container)
@@ -437,6 +449,80 @@ class SmartTrafficApp(ctk.CTk):
         for i in range(4):
             sensor_grid.grid_columnconfigure(i, weight=1)
 
+    def create_priority_vehicle_section(self, parent):
+        """Tạo panel hiển thị xe ưu tiên động"""
+        section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
+        section.pack(fill="x", padx=0, pady=0)
+        
+        # Header với animation
+        header_frame = ctk.CTkFrame(section, fg_color="#ef4444", corner_radius=8, height=40)
+        header_frame.pack(fill="x", padx=0, pady=0)
+        header_frame.pack_propagate(False)
+        
+        header_content = ctk.CTkFrame(header_frame, fg_color="transparent")
+        header_content.pack(expand=True)
+        
+        # Animated title
+        self.priority_title = ctk.CTkLabel(
+            header_content, 
+            text="🚨 PHÁT HIỆN XE ƯU TIÊN", 
+            font=("Segoe UI", 14, "bold"), 
+            text_color="#ffffff"
+        )
+        self.priority_title.pack()
+        
+        # Priority vehicle grid
+        priority_grid = ctk.CTkFrame(section, fg_color="transparent")
+        priority_grid.pack(fill="x", padx=8, pady=8)
+        priority_grid.grid_columnconfigure(0, weight=1)
+        priority_grid.grid_columnconfigure(1, weight=1)
+        
+        self.priority_widgets = {}
+        
+        # J1 và J4 sections
+        for idx, (junction_id, junction_name) in enumerate([("J1", "Ngã tư 1"), ("J4", "Ngã tư 2")]):
+            junction_frame = ctk.CTkFrame(priority_grid, fg_color="#fef2f2", corner_radius=6)
+            junction_frame.grid(row=0, column=idx, padx=4, pady=0, sticky="ew")
+            
+            # Junction header
+            ctk.CTkLabel(
+                junction_frame, 
+                text=f"🚦 {junction_name}", 
+                font=("Segoe UI", 12, "bold"), 
+                text_color="#991b1b"
+            ).pack(pady=(8, 4))
+            
+            # Direction grid
+            dir_grid = ctk.CTkFrame(junction_frame, fg_color="transparent")
+            dir_grid.pack(padx=8, pady=(0, 8))
+            dir_grid.grid_columnconfigure(0, weight=1)
+            dir_grid.grid_columnconfigure(1, weight=1)
+            
+            directions = [
+                ("🔺 Bắc", "#fecaca", "#991b1b", 0, 0),
+                ("🔻 Nam", "#fed7aa", "#9a3412", 0, 1),
+                ("▶️ Đông", "#bbf7d0", "#14532d", 1, 0),
+                ("◀️ Tây", "#fce7f3", "#831843", 1, 1),
+            ]
+            
+            self.priority_widgets[junction_id] = {}
+            
+            for dir_name, bg_color, text_color, row, col in directions:
+                card = ctk.CTkFrame(dir_grid, fg_color=bg_color, corner_radius=4, height=45)
+                card.grid(row=row, column=col, padx=2, pady=2, sticky="ew")
+                card.pack_propagate(False)
+                
+                content = ctk.CTkFrame(card, fg_color="transparent")
+                content.pack(expand=True)
+                
+                ctk.CTkLabel(content, text=dir_name, font=("Segoe UI", 9, "bold"), text_color="#0f172a").pack()
+                
+                val_label = ctk.CTkLabel(content, text="0", font=("Segoe UI", 16, "bold"), text_color=text_color)
+                val_label.pack()
+                
+                dir_key = dir_name.split()[1]  # Lấy "Bắc", "Nam", etc.
+                self.priority_widgets[junction_id][dir_key] = val_label
+
     def create_intersection_section(self, parent, name, column, accent_color):
         section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
         section.grid(row=0, column=column, sticky="nsew", padx=3)
@@ -515,7 +601,7 @@ class SmartTrafficApp(ctk.CTk):
 
     def create_log_section(self, parent):
         section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
-        section.grid(row=2, column=0, sticky="nsew")
+        section.pack(fill="both", expand=True)
         section.grid_rowconfigure(0, weight=1)
         section.grid_columnconfigure(0, weight=1)
         header_frame = ctk.CTkFrame(section, fg_color="transparent", height=35)
@@ -1833,6 +1919,9 @@ class SmartTrafficApp(ctk.CTk):
                 except Exception as sensor_err:
                     # Nếu lỗi, giữ nguyên dữ liệu cũ
                     pass
+            
+            # --- Cập nhật dữ liệu xe ưu tiên ---
+            self.update_priority_vehicle_data()
 
         except Exception as e:
             import traceback
@@ -1859,6 +1948,9 @@ class SmartTrafficApp(ctk.CTk):
                     if key in self.sensor_cards:
                         self.sensor_cards[key].configure(text=str(value))
             
+            # Cập nhật priority panel
+            self.update_priority_ui()
+            
             # occasional logs
             events = ["Cập nhật trạng thái đèn giao thông", "Phát hiện thay đổi lưu lượng", "Điều chỉnh chu kỳ đèn",
                       "Hệ thống hoạt động ổn định"]
@@ -1866,6 +1958,114 @@ class SmartTrafficApp(ctk.CTk):
                 self.log(random.choice(events))
         except Exception as e:
             self.log(f"⚠ Cập nhật UI thất bại: {e}")
+
+    def update_priority_vehicle_data(self):
+        """Cập nhật dữ liệu xe ưu tiên theo hướng"""
+        try:
+            import traci
+            
+            # Reset data
+            for junction_id in self.priority_vehicle_data:
+                for direction in self.priority_vehicle_data[junction_id]:
+                    self.priority_vehicle_data[junction_id][direction] = 0
+            
+            # Lấy tất cả xe ưu tiên
+            all_vehicles = traci.vehicle.getIDList()
+            priority_vehicles = [v for v in all_vehicles if 'priority' in v.lower()]
+            
+            total_priority = 0
+            
+            for veh_id in priority_vehicles:
+                try:
+                    edge_id = traci.vehicle.getRoadID(veh_id)
+                    
+                    # Xác định junction và direction
+                    junction_id = None
+                    direction = None
+                    
+                    # Improved direction detection
+                    if "-E1" in edge_id:
+                        junction_id, direction = "J1", "Bắc"
+                    elif "-E2" in edge_id:
+                        junction_id, direction = "J1", "Nam"
+                    elif "E0" in edge_id and "-E0" not in edge_id:
+                        junction_id, direction = "J1", "Tây"
+                    elif "-E3" in edge_id:
+                        junction_id, direction = "J1", "Đông"
+                    elif "-E4" in edge_id:
+                        junction_id, direction = "J4", "Bắc"
+                    elif "-E5" in edge_id:
+                        junction_id, direction = "J4", "Nam"
+                    elif "-E6" in edge_id:
+                        junction_id, direction = "J4", "Tây"
+                    elif "E3" in edge_id and "-E3" not in edge_id:
+                        junction_id, direction = "J4", "Đông"
+                    
+                    if junction_id and direction:
+                        self.priority_vehicle_data[junction_id][direction] += 1
+                        total_priority += 1
+                        
+                except Exception:
+                    continue
+            
+            # Cập nhật trạng thái hiển thị
+            if total_priority > 0 and not self.has_priority_vehicles:
+                self.show_priority_panel()
+            elif total_priority == 0 and self.has_priority_vehicles:
+                self.hide_priority_panel()
+                
+        except Exception as e:
+            pass
+
+    def show_priority_panel(self):
+        """Hiển thị panel xe ưu tiên với animation"""
+        if not self.has_priority_vehicles:
+            self.has_priority_vehicles = True
+            # Insert priority panel after sensor panel
+            self.priority_container.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+            
+            # Animation effect
+            self.animate_priority_title()
+            self.log("🚨 PHÁT HIỆN XE ƯU TIÊN - Hiển thị panel theo dõi")
+
+    def hide_priority_panel(self):
+        """Ẩn panel xe ưu tiên"""
+        if self.has_priority_vehicles:
+            self.has_priority_vehicles = False
+            self.priority_container.grid_forget()
+            self.log("✅ Không còn xe ưu tiên - Ẩn panel theo dõi")
+
+    def animate_priority_title(self):
+        """Animation cho title xe ưu tiên"""
+        def blink():
+            if self.has_priority_vehicles:
+                current_color = self.priority_title.cget("text_color")
+                new_color = "#ffffff" if current_color == "#ffcccb" else "#ffcccb"
+                self.priority_title.configure(text_color=new_color)
+                self.after(500, blink)  # Blink every 500ms
+        
+        blink()
+
+    def update_priority_ui(self):
+        """Cập nhật UI panel xe ưu tiên"""
+        if self.has_priority_vehicles:
+            for junction_id, directions in self.priority_vehicle_data.items():
+                if junction_id in self.priority_widgets:
+                    for direction, count in directions.items():
+                        if direction in self.priority_widgets[junction_id]:
+                            widget = self.priority_widgets[junction_id][direction]
+                            widget.configure(text=str(count))
+                            
+                            # Highlight nếu có xe
+                            if count > 0:
+                                widget.configure(text_color="#dc2626")  # Đỏ đậm
+                            else:
+                                # Màu mặc định theo hướng
+                                colors = {
+                                    "Bắc": "#991b1b", "Nam": "#9a3412", 
+                                    "Đông": "#14532d", "Tây": "#831843"
+                                }
+                                widget.configure(text_color=colors.get(direction, "#64748b"))
 
 
 if __name__ == "__main__":
