@@ -78,9 +78,11 @@ class SmartTrafficApp(ctk.CTk):
             "Tổng xe": 0,
             "Độ trễ TB": 0.0,
             "Lưu lượng": 0,
+            "Hàng chờ TB": 0.0,
+            "Dừng TB": 0.0,
+            "Chờ tối đa": 0.0,
             "Chu kỳ TB": 0,
-            "Công bằng": 0.0,
-            "Phối hợp": 0
+            "Công bằng": 0.0
         }
         
         # Sensor data
@@ -89,6 +91,13 @@ class SmartTrafficApp(ctk.CTk):
             "E2 Detectors": 0,
             "Mật độ TB": 0,
             "Queue TB": 0
+        }
+        
+        # Emergency vehicle tracking
+        self.emergency_vehicle_data = {
+            "detection_time": None,
+            "clearance_time": None,
+            "total_clearance_time": 0.0
         }
 
         self.intersection_data = {
@@ -333,18 +342,13 @@ class SmartTrafficApp(ctk.CTk):
         kpi_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         kpi_container.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         self.create_global_kpi_section(kpi_container)
-        
-        # Sensor panel
-        sensor_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        sensor_container.grid(row=1, column=0, sticky="ew", pady=(0, 6))
-        self.create_sensor_section(sensor_container)
 
         # Priority Vehicle Panel (ẩn mặc định)
         self.priority_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.create_priority_vehicle_section(self.priority_container)
 
         intersections_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        intersections_container.grid(row=3, column=0, sticky="ew", pady=(0, 6))
+        intersections_container.grid(row=2, column=0, sticky="ew", pady=(0, 6))
         intersections_container.grid_columnconfigure(0, weight=1)
         intersections_container.grid_columnconfigure(1, weight=1)
 
@@ -352,7 +356,7 @@ class SmartTrafficApp(ctk.CTk):
         self.create_intersection_section(intersections_container, "Ngã tư 2", 1, "#8b5cf6")
 
         log_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        log_container.grid(row=4, column=0, sticky="nsew")
+        log_container.grid(row=3, column=0, sticky="nsew")
         log_container.grid_rowconfigure(0, weight=1)
         log_container.grid_columnconfigure(0, weight=1)
         self.create_log_section(log_container)
@@ -371,15 +375,17 @@ class SmartTrafficApp(ctk.CTk):
         self.global_kpi_cards = {}
         kpi_data = [
             ("Tổng xe", "—", "xe", "#dbeafe", "#1e3a8a", "🚗"),
-            ("Độ trễ TB", "—", "s", "#fef3c7", "#78350f", "⏱"),
+            ("Độ trễ TB", "—", "s/xe", "#fef3c7", "#78350f", "⏱"),
             ("Lưu lượng", "—", "xe/h", "#d1fae5", "#065f46", "📈"),
-            ("Chu kỳ TB", "—", "s", "#e0e7ff", "#3730a3", "💡"),
-            ("Công bằng", "—", "", "#fce7f3", "#831843", "⚖"),
-            ("Phối hợp", "—", "%", "#ccfbf1", "#134e4a", "🔗"),
+            ("Hàng chờ TB", "—", "PCU", "#fecaca", "#991b1b", "🚦"),
+            ("Dừng TB", "—", "lần", "#e0e7ff", "#3730a3", "⏹"),
+            ("Chờ tối đa", "—", "s", "#fed7aa", "#9a3412", "⏰"),
+            ("Chu kỳ TB", "—", "s", "#ddd6fe", "#5b21b6", "💡"),
+            ("Công bằng", "—", "%", "#fce7f3", "#831843", "⚖"),
         ]
         for idx, (name, value, unit, bg_color, text_color, icon) in enumerate(kpi_data):
-            row = idx // 3
-            col = idx % 3
+            row = idx // 4  # Changed from 3 to 4 columns
+            col = idx % 4
             card = ctk.CTkFrame(kpi_grid, fg_color=bg_color, corner_radius=6, width=110, height=65)
             card.grid(row=row, column=col, padx=3, pady=3, sticky="ew")
             card.grid_propagate(False)
@@ -398,56 +404,8 @@ class SmartTrafficApp(ctk.CTk):
                 ctk.CTkLabel(value_frame, text=f" {unit}", font=("Segoe UI", 8), text_color="#475569", anchor="w").pack(
                     side="left", pady=(4, 0))
             self.global_kpi_cards[name] = val_label
-        for i in range(3):
+        for i in range(4):  # Changed from 3 to 4 columns
             kpi_grid.grid_columnconfigure(i, weight=1)
-    
-    def create_sensor_section(self, parent):
-        """Tạo panel hiển thị trạng thái cảm biến"""
-        section = ctk.CTkFrame(parent, fg_color="#ffffff", corner_radius=8)
-        section.pack(fill="x", padx=0, pady=0)
-        
-        # Header
-        header_frame = ctk.CTkFrame(section, fg_color="transparent", height=35)
-        header_frame.pack(fill="x", padx=10, pady=(8, 6))
-        header_frame.pack_propagate(False)
-        ctk.CTkLabel(header_frame, text="📡 Trạng Thái Cảm Biến (Sensors)", font=("Segoe UI", 12, "bold"),
-                     text_color="#0f172a", anchor="w").pack(side="left")
-        
-        # Sensor grid
-        sensor_grid = ctk.CTkFrame(section, fg_color="transparent")
-        sensor_grid.pack(fill="x", padx=8, pady=(0, 8))
-        
-        self.sensor_cards = {}
-        sensor_data = [
-            ("E1 Detectors", "—", "detectors", "#e0f2fe", "#0369a1", "🔵"),
-            ("E2 Detectors", "—", "detectors", "#fef3c7", "#92400e", "🟡"),
-            ("Mật độ TB", "—", "%", "#d1fae5", "#065f46", "📊"),
-            ("Queue TB", "—", "m", "#fecaca", "#991b1b", "🚗"),
-        ]
-        
-        for idx, (name, value, unit, bg_color, text_color, icon) in enumerate(sensor_data):
-            card = ctk.CTkFrame(sensor_grid, fg_color=bg_color, corner_radius=6, width=110, height=60)
-            card.grid(row=0, column=idx, padx=3, pady=3, sticky="ew")
-            card.grid_propagate(False)
-            
-            ctk.CTkLabel(card, text=icon, font=("Segoe UI", 14), text_color=text_color).pack(side="left",
-                                                                                             padx=(6, 4), pady=4)
-            content = ctk.CTkFrame(card, fg_color="transparent")
-            content.pack(side="left", fill="both", expand=True, pady=4, padx=(0, 4))
-            ctk.CTkLabel(content, text=name, font=("Segoe UI", 8, "bold"), text_color="#0f172a", anchor="w").pack(
-                anchor="w")
-            value_frame = ctk.CTkFrame(content, fg_color="transparent")
-            value_frame.pack(anchor="w", fill="x")
-            val_label = ctk.CTkLabel(value_frame, text=value, font=("Segoe UI", 14, "bold"),
-                                     text_color=text_color, anchor="w")
-            val_label.pack(side="left")
-            if unit:
-                ctk.CTkLabel(value_frame, text=f" {unit}", font=("Segoe UI", 8), text_color="#475569", anchor="w").pack(
-                    side="left", pady=(3, 0))
-            self.sensor_cards[name] = val_label
-        
-        for i in range(4):
-            sensor_grid.grid_columnconfigure(i, weight=1)
 
     def create_priority_vehicle_section(self, parent):
         """Tạo panel hiển thị xe ưu tiên động"""
@@ -957,9 +915,11 @@ class SmartTrafficApp(ctk.CTk):
             "Tổng xe": 0,
             "Độ trễ TB": 0.0,
             "Lưu lượng": 0,
+            "Hàng chờ TB": 0.0,
+            "Dừng TB": 0.0,
+            "Chờ tối đa": 0.0,
             "Chu kỳ TB": 0,
-            "Công bằng": 0.0,
-            "Phối hợp": 0
+            "Công bằng": 0.0
         }
 
         # Reset intersection data
@@ -1751,18 +1711,26 @@ class SmartTrafficApp(ctk.CTk):
     # ============ Update data from SUMO & UI ============
     def update_data_from_sumo(self):
         """
-        Lấy dữ liệu thực từ SUMO qua VehicleCounter module:
-        - Trạng thái đèn (Red/Yellow/Green)
-        - Số xe theo hướng (sử dụng VehicleCounter.count_vehicles_on_edges())
-        - Hàng chờ (tổng) và thời gian chờ trung bình
-        - Tính KPI: Fairness, Coordination, Delay, Throughput, Cycle
+        Lấy dữ liệu thực từ SUMO và tính toán KPI theo CÔNG THỨC NHÓM:
         
-        LƯU Ý: SỬ DỤNG VehicleCounter MODULE thay vì tự đếm bằng TraCI
+        KPI CHÍNH (8 chỉ số):
+        1. Tổng xe: Tổng số xe trong simulation
+        2. Độ trễ TB (Average Delay): travelTime - freeFlowTime (s/xe)
+        3. Lưu lượng (Throughput): Số xe qua giao lộ/giờ (xe/h hoặc PCU/h)
+        4. Hàng chờ TB (Average Queue Length): Số xe chờ trung bình (PCU)
+        5. Dừng TB (Average Stops): Số lần dừng trung bình/xe
+        6. Chờ tối đa (Maximum Waiting Time): Thời gian chờ lâu nhất (s)
+        7. Chu kỳ TB (Average Cycle): Chu kỳ đèn trung bình (s)
+        8. Công bằng (Fairness Index): So sánh max và trung bình wait time (%)
+        
+        METRICS PHỤ (theo ngã tư):
+        - Queue length: Số xe đang chờ
+        - Wait time: Thời gian chờ trung bình tại ngã tư
+        - Số xe theo hướng (Bắc/Nam/Đông/Tây)
         """
         try:
             import traci
         except Exception:
-            self.log("⚠ Traci chưa sẵn sàng khi update dữ liệu.")
             return
 
         try:
@@ -1770,24 +1738,139 @@ class SmartTrafficApp(ctk.CTk):
             if not tls_ids:
                 return
 
+            # ===== LẤY DỮ LIỆU TỪ TRACI =====
+            current_time = traci.simulation.getTime()
+            all_vehicle_ids = traci.vehicle.getIDList()
+            departed_count = traci.simulation.getDepartedNumber()
+            arrived_count = traci.simulation.getArrivedNumber()
+            total_vehicles_in_sim = len(all_vehicle_ids)
+            
             # === BƯỚC 1: Đếm xe qua VehicleCounter ===
             vehicle_counts = None
             if self.vehicle_counter is not None:
                 try:
-                    # Gọi method đếm xe của VehicleCounter
                     self.vehicle_counter.count_vehicles_on_edges()
-                    # Lấy kết quả đếm
                     vehicle_counts = self.vehicle_counter.get_current_counts()
                 except Exception as vc_err:
-                    self.log(f"⚠ Lỗi khi đếm xe qua VehicleCounter: {vc_err}")
                     vehicle_counts = None
             
-            # === Đếm xe ưu tiên hiện tại ===
-            all_vehicles = traci.vehicle.getIDList()
-            priority_vehicles = [v for v in all_vehicles if 'priority' in v.lower()]
-            # Không log số xe ưu tiên nữa để tránh spam
+            # === BƯỚC 2: Tính KPI cho TỪNG xe ===
+            # PCU conversion factors (Việt Nam standard)
+            PCU_FACTORS = {
+                "motorcycle": 0.3,
+                "car": 1.0,
+                "bus": 1.5,
+                "truck": 1.5,
+                "emergency": 1.0
+            }
+            
+            # Variables để tính các KPI
+            total_delay = 0.0           # Sum of (travelTime - freeFlowTime)
+            total_waiting_time = 0.0    # Sum of waiting time
+            total_stops = 0             # Sum of stops
+            max_waiting_time = 0.0      # Maximum waiting time
+            total_pcu = 0.0             # Total PCU
+            total_queue_pcu = 0.0       # Total queue in PCU
+            vehicles_with_data = 0
+            
+            # Vehicle-specific tracking cho stops
+            if not hasattr(self, '_vehicle_stop_tracker'):
+                self._vehicle_stop_tracker = {}  # {veh_id: {"last_speed": 0, "stops": 0}}
+            
+            for vid in all_vehicle_ids:
+                try:
+                    # === 1. AVERAGE DELAY (s/xe) ===
+                    # Công thức: Delay = travelTime - freeFlowTime
+                    # freeFlowTime = route_length / max_speed
+                    route_id = traci.vehicle.getRouteID(vid)
+                    route_edges = traci.route.getEdges(route_id)
+                    
+                    # Tính freeFlowTime (thời gian lý tưởng không dừng)
+                    free_flow_time = 0.0
+                    for edge_id in route_edges:
+                        try:
+                            edge_length = traci.lane.getLength(f"{edge_id}_0")  # Giả sử lane 0
+                            max_speed = traci.lane.getMaxSpeed(f"{edge_id}_0")
+                            free_flow_time += edge_length / max_speed if max_speed > 0 else 0
+                        except Exception:
+                            continue
+                    
+                    # Tính travelTime (thời gian thực tế)
+                    # SUMO không trực tiếp cho travelTime, dùng: departTime + accumulated time
+                    depart_delay = traci.vehicle.getDeparture(vid)
+                    if depart_delay >= 0:  # Xe đã xuất phát
+                        travel_time = current_time - depart_delay
+                        delay = max(0, travel_time - free_flow_time)
+                        total_delay += delay
+                    
+                    # === 2. WAITING TIME (cho Fairness) ===
+                    waiting_time = traci.vehicle.getWaitingTime(vid)
+                    total_waiting_time += waiting_time
+                    max_waiting_time = max(max_waiting_time, waiting_time)
+                    
+                    # === 3. AVERAGE STOPS (số lần dừng/xe) ===
+                    speed = traci.vehicle.getSpeed(vid)
+                    
+                    if vid not in self._vehicle_stop_tracker:
+                        self._vehicle_stop_tracker[vid] = {"last_speed": speed, "stops": 0}
+                    
+                    tracker = self._vehicle_stop_tracker[vid]
+                    
+                    # Detect stop: từ speed > 0.1 → speed < 0.1
+                    if tracker["last_speed"] > 0.1 and speed < 0.1:
+                        tracker["stops"] += 1
+                    
+                    tracker["last_speed"] = speed
+                    total_stops += tracker["stops"]
+                    
+                    # === 4. QUEUE LENGTH (PCU) ===
+                    # Xe đang chờ (speed < 0.1 m/s)
+                    vtype = traci.vehicle.getTypeID(vid)
+                    pcu_factor = PCU_FACTORS.get(vtype, 1.0)
+                    total_pcu += pcu_factor
+                    
+                    if speed < 0.1:
+                        total_queue_pcu += pcu_factor
+                    
+                    vehicles_with_data += 1
+                    
+                except Exception:
+                    continue
+            
+            # Clean up departed vehicles từ tracker
+            current_vehicles = set(all_vehicle_ids)
+            departed_vehicles = set(self._vehicle_stop_tracker.keys()) - current_vehicles
+            for departed_vid in departed_vehicles:
+                del self._vehicle_stop_tracker[departed_vid]
+            
+            # === TÍNH CÁC KPI TRUNG BÌNH ===
+            
+            # 1. TỔNG XE (hiển thị số xe hiện tại)
+            total_vehicles = total_vehicles_in_sim
+            
+            # 2. ĐỘ TRỄ TB (Average Delay - s/xe)
+            avg_delay = round(total_delay / vehicles_with_data, 1) if vehicles_with_data > 0 else 0.0
+            
+            # 3. LƯU LƯỢNG (Throughput - xe/giờ)
+            if current_time > 0:
+                time_hours = current_time / 3600.0
+                throughput = int(arrived_count / time_hours) if time_hours > 0 else 0
+            else:
+                throughput = 0
+            
+            # 4. HÀNG CHỜ TB (Average Queue Length - PCU)
+            avg_queue_pcu = round(total_queue_pcu, 1)
+            
+            # 5. Dừng TB (Average Stops per Vehicle - lần)
+            avg_stops = round(total_stops / vehicles_with_data, 2) if vehicles_with_data > 0 else 0.0
+            
+            # 6. Chờ tối đa (Maximum Waiting Time - s)
+            # Mục tiêu: < 60s (tốt), < 120s (chấp nhận được)
+            max_wait = round(max_waiting_time, 1)
 
-            # === BƯỚC 2: Cập nhật dữ liệu cho từng ngã tư ===
+            # === BƯỚC 3: Cập nhật dữ liệu cho TỪNG ngã tư ===
+            intersection_wait_times = []  # Để tính Fairness
+            
             for i, tls_id in enumerate(tls_ids[:2]):
                 int_name = f"Ngã tư {i+1}"
                 junction_id = "J1" if i == 0 else "J4"
@@ -1798,166 +1881,199 @@ class SmartTrafficApp(ctk.CTk):
                 # --- Lấy trạng thái đèn ---
                 try:
                     state = traci.trafficlight.getRedYellowGreenState(tls_id)
+                    if "G" in state:
+                        self.intersection_data[int_name]["light_state"] = "Xanh"
+                    elif "y" in state.lower():
+                        self.intersection_data[int_name]["light_state"] = "Vàng"
+                    elif all(ch == "r" for ch in state.lower()):
+                        self.intersection_data[int_name]["light_state"] = "Đỏ Toàn Phần"
+                    else:
+                        self.intersection_data[int_name]["light_state"] = "Đỏ"
                 except Exception:
-                    state = ""
-
-                if "G" in state:
-                    self.intersection_data[int_name]["light_state"] = "Xanh"
-                elif "y" in state.lower():
-                    self.intersection_data[int_name]["light_state"] = "Vàng"
-                elif all(ch == "r" for ch in state.lower()):
-                    self.intersection_data[int_name]["light_state"] = "Đỏ Toàn Phần"
-                else:
                     self.intersection_data[int_name]["light_state"] = "Đỏ"
 
                 # --- Sử dụng dữ liệu từ VehicleCounter ---
                 if vehicle_counts and junction_id in vehicle_counts:
-                    # Lấy số xe từ VehicleCounter
                     junction_vehicles = vehicle_counts[junction_id]
                     self.intersection_data[int_name]["vehicles"] = junction_vehicles.copy()
-                    
-                    # Tính tổng xe (queue)
-                    total_vehicle = sum(junction_vehicles.values())
-                    self.intersection_data[int_name]["queue"] = total_vehicle
-                    
-                    # Tính thời gian chờ trung bình (vẫn cần dùng TraCI)
-                    total_wait = 0.0
-                    try:
-                        # Lấy tất cả xe trong simulation
-                        all_vehicle_ids = traci.vehicle.getIDList()
-                        for vid in all_vehicle_ids:
-                            try:
-                                total_wait += traci.vehicle.getWaitingTime(vid)
-                            except Exception:
-                                continue
-                        
-                        self.intersection_data[int_name]["wait_time"] = round(
-                            total_wait / total_vehicle, 1
-                        ) if total_vehicle > 0 else 0
-                    except Exception as wait_err:
-                        self.intersection_data[int_name]["wait_time"] = 0
+                    total_junction_vehicles = sum(junction_vehicles.values())
+                    self.intersection_data[int_name]["queue"] = total_junction_vehicles
                 else:
-                    # Fallback: nếu VehicleCounter không hoạt động, đặt về 0
+                    # Fallback
                     self.intersection_data[int_name]["vehicles"] = {
                         "Bắc": 0, "Nam": 0, "Đông": 0, "Tây": 0
                     }
                     self.intersection_data[int_name]["queue"] = 0
-                    self.intersection_data[int_name]["wait_time"] = 0
+                
+                # --- Wait time cho ngã tư này ---
+                junction_wait_time = 0.0
+                junction_vehicle_count = 0
+                
+                # Tính wait time cho các xe gần ngã tư này
+                try:
+                    for vid in all_vehicle_ids:
+                        try:
+                            edge_id = traci.vehicle.getRoadID(vid)
+                            # Kiểm tra xe có thuộc junction này không
+                            if junction_id == "J1" and any(e in edge_id for e in ["-E1", "-E2", "E0", "-E3"]):
+                                junction_wait_time += traci.vehicle.getWaitingTime(vid)
+                                junction_vehicle_count += 1
+                            elif junction_id == "J4" and any(e in edge_id for e in ["-E4", "-E5", "-E6", "E3"]):
+                                junction_wait_time += traci.vehicle.getWaitingTime(vid)
+                                junction_vehicle_count += 1
+                        except Exception:
+                            continue
+                    
+                    avg_junction_wait = round(
+                        junction_wait_time / junction_vehicle_count, 1
+                    ) if junction_vehicle_count > 0 else 0.0
+                    
+                    self.intersection_data[int_name]["wait_time"] = avg_junction_wait
+                    intersection_wait_times.append(avg_junction_wait)
+                    
+                except Exception:
+                    self.intersection_data[int_name]["wait_time"] = 0.0
+                    intersection_wait_times.append(0.0)
 
-
-            # --- Công bằng (Fairness) ---
-            queues = [data["queue"] for data in self.intersection_data.values()]
-            if len(queues) > 0 and sum(queues) > 0:
-                mean_q = sum(queues) / len(queues)
-                std_q = (sum((x - mean_q) ** 2 for x in queues) / len(queues)) ** 0.5
-                fairness = round(1 - (std_q / (mean_q + 0.001)), 2)
+            # === BƯỚC 4: Tính các KPI TOÀN CỤC còn lại ===
+            
+            # 7. CHU KỲ TB (Average Cycle - s)
+            if self.mode == "Tự động" and self.controllers:
+                # Adaptive mode: Lấy từ controller history
+                cycle_times = []
+                for tls_id, ctrl in self.controllers.items():
+                    try:
+                        if hasattr(ctrl, 'phase_history') and len(ctrl.phase_history) > 0:
+                            recent_phases = ctrl.phase_history[-10:]  # 10 phases gần nhất
+                            cycle_time = sum(duration for _, _, duration in recent_phases) / len(recent_phases)
+                            cycle_times.append(cycle_time)
+                    except Exception:
+                        pass
+                
+                avg_cycle = int(sum(cycle_times) / len(cycle_times)) if cycle_times else (self.green_time + self.yellow_time + self.red_time) * 2
             else:
-                fairness = 1.0
-
-            # --- Phối hợp (Coordination) ---
-            try:
-                if len(tls_ids) >= 2:
-                    rem1 = traci.trafficlight.getNextSwitch(tls_ids[0]) - traci.simulation.getTime()
-                    rem2 = traci.trafficlight.getNextSwitch(tls_ids[1]) - traci.simulation.getTime()
-                    diff = abs(rem1 - rem2)
-                    cycle = self.green_time + self.yellow_time + self.red_time
-                    coordination = max(0, 100 * (1 - diff / cycle))
+                # Fixed-time mode
+                avg_cycle = int((self.green_time + self.yellow_time + self.red_time) * 2)  # NS + EW
+            
+            # 8. CÔNG BẰNG (Fairness Index - %)
+            # Công thức từ tài liệu: So sánh thời gian chờ lớn nhất và trung bình
+            # Fairness = (1 - (max_wait - mean_wait) / max_wait) * 100
+            # Giá trị cao (100%) = rất công bằng
+            if len(intersection_wait_times) > 0 and sum(intersection_wait_times) > 0:
+                mean_wait = sum(intersection_wait_times) / len(intersection_wait_times)
+                max_wait_intersection = max(intersection_wait_times)
+                
+                if max_wait_intersection > 0:
+                    fairness = round((1 - (max_wait_intersection - mean_wait) / max_wait_intersection) * 100, 1)
+                    fairness = max(0, min(100, fairness))  # Clamp 0-100%
                 else:
-                    coordination = 100.0
-            except Exception:
-                coordination = 100.0
-
-            # --- Các KPI toàn cục ---
-            total_vehicles = sum(sum(d["vehicles"].values()) for d in self.intersection_data.values())
-            if len(self.intersection_data) > 0:
-                avg_delay = sum(data["wait_time"] for data in self.intersection_data.values()) / len(self.intersection_data)
+                    fairness = 100.0
             else:
-                avg_delay = 0.0
-            throughput = total_vehicles * 10 
-            avg_cycle = int(self.green_time + self.yellow_time + self.red_time)
+                fairness = 100.0
 
+            # === CẬP NHẬT GLOBAL KPI ===
             self.global_kpi_data = {
                 "Tổng xe": total_vehicles,
-                "Độ trễ TB": round(avg_delay, 1),
+                "Độ trễ TB": avg_delay,
                 "Lưu lượng": throughput,
+                "Hàng chờ TB": avg_queue_pcu,
+                "Dừng TB": avg_stops,
+                "Chờ tối đa": max_wait,
                 "Chu kỳ TB": avg_cycle,
-                "Công bằng": fairness,
-                "Phối hợp": round(coordination, 1)
+                "Công bằng": fairness
             }
             
-            # --- Cập nhật dữ liệu cảm biến ---
+            # === BƯỚC 5: Cập nhật Sensor Data (E1/E2 Detectors) ===
             if self.sensor_manager:
                 try:
-                    # Lấy tổng số detectors
                     summary = self.sensor_manager.get_summary()
                     
                     # Tính mật độ và queue trung bình từ E2 detectors
                     total_occupancy = 0
-                    total_queue = 0
-                    e2_count = 0
+                    total_queue_length = 0
+                    detector_count = 0
                     
                     for junction_id in ["J1", "J4"]:
                         densities = self.sensor_manager.get_all_junction_densities(junction_id)
                         for direction, data in densities.items():
                             if "error" not in data:
-                                # Tính occupancy từ số xe (simplified)
-                                occupancy = min(100, data["total_vehicles"] * 10)  # Rough estimate
+                                # Mật độ = occupancy * 100
+                                occupancy = data.get("occupancy", 0) * 100
                                 total_occupancy += occupancy
-                                total_queue += data["queue_length"]
-                                e2_count += 1
+                                total_queue_length += data["queue_length"]
+                                detector_count += 1
                     
-                    avg_occupancy = round(total_occupancy / e2_count, 1) if e2_count > 0 else 0
-                    avg_queue = round(total_queue / e2_count, 1) if e2_count > 0 else 0
+                    avg_occupancy = round(total_occupancy / detector_count, 1) if detector_count > 0 else 0
+                    avg_queue_meters = round(total_queue_length / detector_count, 1) if detector_count > 0 else 0
                     
-                    # Cập nhật sensor data
                     self.sensor_data = {
                         "E1 Detectors": summary.get("e1_count", 0),
                         "E2 Detectors": summary.get("e2_count", 0),
                         "Mật độ TB": avg_occupancy,
-                        "Queue TB": avg_queue
+                        "Queue TB": avg_queue_meters
                     }
-                except Exception as sensor_err:
-                    # Nếu lỗi, giữ nguyên dữ liệu cũ
+                except Exception:
                     pass
             
-            # --- Cập nhật dữ liệu xe ưu tiên ---
+            # === BƯỚC 6: Cập nhật dữ liệu xe ưu tiên ===
             self.update_priority_vehicle_data()
+            
+            # === LOG ĐỊNH KỲ (mỗi 10 giây) ===
+            if not hasattr(self, '_last_kpi_log_time'):
+                self._last_kpi_log_time = 0
+            
+            if current_time - self._last_kpi_log_time >= 10:
+                self._last_kpi_log_time = current_time
+                self.log(f"📊 KPI | Xe:{total_vehicles} | Delay:{avg_delay}s/xe | Throughput:{throughput}xe/h | Queue:{avg_queue_pcu}PCU | Stops:{avg_stops} | MaxWait:{max_wait}s | Cycle:{avg_cycle}s | Fairness:{fairness}%")
 
         except Exception as e:
-            import traceback
-            self.log(f"⚠ Cập nhật dữ liệu SUMO thất bại: {e}")
-            self.log(f"📋 Chi tiết lỗi: {traceback.format_exc()}")
+            # Log chi tiết lỗi để debug (chỉ 1 lần)
+            if not hasattr(self, '_error_logged'):
+                import traceback
+                error_detail = traceback.format_exc()
+                self.log(f"❌ Lỗi cập nhật KPI: {e}")
+                print(f"=== CHI TIẾT LỖI KPI ===\n{error_detail}")
+                self._error_logged = True
 
     def update_ui(self):
+        """Cập nhật UI với dữ liệu mới nhất từ SUMO"""
         try:
+            # === Cập nhật KPI cards ===
             for key, value in self.global_kpi_data.items():
                 if key in self.global_kpi_cards:
-                    self.global_kpi_cards[key].configure(text=str(value))
+                    # Format số cho đẹp
+                    if isinstance(value, float):
+                        formatted_value = f"{value:.1f}"
+                    else:
+                        formatted_value = str(value)
+                    
+                    self.global_kpi_cards[key].configure(text=formatted_value)
+            
+            # === Cập nhật intersection widgets ===
             for int_name, data in self.intersection_data.items():
                 if int_name in self.intersection_widgets:
                     widgets = self.intersection_widgets[int_name]
+                    
+                    # Queue
                     widgets["queue"].configure(text=str(data["queue"]))
-                    widgets["wait"].configure(text=str(data["wait_time"]))
+                    
+                    # Wait time
+                    wait_text = f"{data['wait_time']:.1f}" if isinstance(data['wait_time'], float) else str(data['wait_time'])
+                    widgets["wait"].configure(text=wait_text)
+                    
+                    # Directions
                     for direction, count in data["vehicles"].items():
                         if direction in widgets["directions"]:
                             widgets["directions"][direction].configure(text=str(count))
             
-            # Cập nhật sensor cards
-            if hasattr(self, 'sensor_data') and hasattr(self, 'sensor_cards'):
-                for key, value in self.sensor_data.items():
-                    if key in self.sensor_cards:
-                        self.sensor_cards[key].configure(text=str(value))
-            
-            # Cập nhật priority panel
+            # === Cập nhật priority panel ===
             self.update_priority_ui()
-            
-            # occasional logs
-            events = ["Cập nhật trạng thái đèn giao thông", "Phát hiện thay đổi lưu lượng", "Điều chỉnh chu kỳ đèn",
-                      "Hệ thống hoạt động ổn định"]
-            if random.random() < 0.05:
-                self.log(random.choice(events))
+
         except Exception as e:
-            self.log(f"⚠ Cập nhật UI thất bại: {e}")
+            # Log lỗi nhưng không crash UI
+            if not hasattr(self, '_ui_error_logged'):
+                self.log(f"⚠ Lỗi cập nhật UI: {e}")
+                self._ui_error_logged = True
 
     def update_priority_vehicle_data(self):
         """Cập nhật dữ liệu xe ưu tiên theo hướng"""
@@ -2021,8 +2137,8 @@ class SmartTrafficApp(ctk.CTk):
         """Hiển thị panel xe ưu tiên với animation"""
         if not self.has_priority_vehicles:
             self.has_priority_vehicles = True
-            # Insert priority panel after sensor panel
-            self.priority_container.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+            # Insert priority panel sau KPI panel (row=1)
+            self.priority_container.grid(row=1, column=0, sticky="ew", pady=(0, 6))
             
             # Animation effect
             self.animate_priority_title()
