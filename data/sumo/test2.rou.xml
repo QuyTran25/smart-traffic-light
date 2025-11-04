@@ -50,19 +50,26 @@
 
 <vType id="priority" vClass="emergency"
        length="4.5" width="1.8" minGap="1.0"
-       accel="4.0" decel="6.0" sigma="0.2"
-       maxSpeed="70" speedFactor="1.5"
+       accel="3.0" decel="5.0" sigma="0.2"
+       maxSpeed="22" speedFactor="1.2"
        speedDev="0.1"
        color="1,1,1"
        guiShape="emergency"
        emissionClass="HBEFA3/PC_G_EU4"
-       jmDriveAfterRedTime="0"
-       jmDriveAfterRedSpeed="2.0"
+       jmDriveAfterYellowTime="0.0"
+       jmDriveAfterRedTime="0.0"
+       jmDriveAfterRedSpeed="20.0"
+       jmIgnoreJunctionFoeProb="1.0"
        jmIgnoreFoeProb="1.0"
-       jmIgnoreFoeSpeed="2.0"
+       jmIgnoreFoeSpeed="15.0"
+       jmIgnoreKeepClearTime="0.0"
+       jmCrossingGap="0.0"
+       jmTimegapMinor="0.0"
        laneChangeModel="LC2013"
        lcStrategic="3.0"
-       lcSpeedGain="5.0"/>
+       lcSpeedGain="5.0"
+       lcKeepRight="0.0"
+       lcAssertive="100.0"/>
 
     <!-- ====== Phân phối tỉ lệ xe theo thực tế TP.HCM ====== -->
     <!-- Distribution - KHÔNG có xe ưu tiên tự spawn (sẽ spawn thủ công qua dashboard) -->
@@ -110,11 +117,12 @@
     <route id="r29" edges="-E6 -E3 E2"/>
 
     <!-- ====== Luồng xe tổng hợp (chạy ngẫu nhiên theo tỉ lệ) - KHÔNG có xe ưu tiên ====== -->
-    <flow id="flow_all" type="dist_normal" route="r0" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_2" type="dist_normal" route="r1" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_3" type="dist_normal" route="r2" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_4" type="dist_normal" route="r3" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_5" type="dist_normal" route="r4" begin="0" end="3600" probability="1.0"/>
+    <!-- GIẢM xe từ E0 (Đông) xuống 20% -->
+    <flow id="flow_all" type="dist_normal" route="r0" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_2" type="dist_normal" route="r1" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_3" type="dist_normal" route="r2" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_4" type="dist_normal" route="r3" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_5" type="dist_normal" route="r4" begin="0" end="3600" probability="0.2"/>
 
     <flow id="flow_all_6" type="dist_normal" route="r5" begin="0" end="3600" probability="1.0"/>
     <flow id="flow_all_7" type="dist_normal" route="r6" begin="0" end="3600" probability="1.0"/>
@@ -140,9 +148,10 @@
     <flow id="flow_all_24" type="dist_normal" route="r23" begin="0" end="3600" probability="1.0"/>
     <flow id="flow_all_25" type="dist_normal" route="r24" begin="0" end="3600" probability="1.0"/>
 
-    <flow id="flow_all_26" type="dist_normal" route="r25" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_27" type="dist_normal" route="r26" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_28" type="dist_normal" route="r27" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_29" type="dist_normal" route="r28" begin="0" end="3600" probability="1.0"/>
-    <flow id="flow_all_30" type="dist_normal" route="r29" begin="0" end="3600" probability="1.0"/>
+    <!-- GIẢM xe từ -E6 (Tây) xuống 20% -->
+    <flow id="flow_all_26" type="dist_normal" route="r25" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_27" type="dist_normal" route="r26" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_28" type="dist_normal" route="r27" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_29" type="dist_normal" route="r28" begin="0" end="3600" probability="0.2"/>
+    <flow id="flow_all_30" type="dist_normal" route="r29" begin="0" end="3600" probability="0.2"/>
 </routes>
