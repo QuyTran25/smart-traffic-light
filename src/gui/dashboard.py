@@ -1120,9 +1120,14 @@ class SmartTrafficApp(ctk.CTk):
             self.log(f"⚠️ Lỗi khi xóa xe ưu tiên: {e}")
     
     def init_priority_controllers(self):
-        """Khởi tạo Priority Controllers cho các ngã tư"""
+        """Khởi tạo Priority Controllers cho các ngã tư - CHỈ CHO CHẾ ĐỘ TỰ ĐỘNG"""
         if PriorityController is None:
             self.log("⚠️ PriorityController không khả dụng!")
+            return
+        
+        # Chỉ khởi động Priority Controller khi ở chế độ Tự động
+        if self.mode != "Tự động":
+            self.log("ℹ️ Chế độ Mặc định không hỗ trợ xe ưu tiên")
             return
         
         try:
@@ -1145,7 +1150,7 @@ class SmartTrafficApp(ctk.CTk):
                 # Khởi động controller
                 if priority_ctrl.start():
                     self.priority_controllers[junction_id] = priority_ctrl
-                    self.log(f"✅ PriorityController [{junction_id}] đã khởi động")
+                    self.log(f"✅ PriorityController [{junction_id}] đã khởi động (CHẾ ĐỘ TỰ ĐỘNG)")
                 else:
                     self.log(f"❌ Không thể khởi động PriorityController [{junction_id}]")
         
@@ -1154,7 +1159,7 @@ class SmartTrafficApp(ctk.CTk):
     
     def on_priority_state_change(self, junction_id, state, vehicle):
         """
-        Callback được gọi khi PriorityController thay đổi state
+        Callback được gọi khi PriorityController thay đổi state - CHỈ CHO CHẾ ĐỘ TỰ ĐỘNG
         Cập nhật UI để hiển thị trạng thái ưu tiên rõ ràng
         
         Args:
@@ -1162,6 +1167,10 @@ class SmartTrafficApp(ctk.CTk):
             state: Trạng thái mới (NORMAL, DETECTION, PREEMPTION_GREEN, etc.)
             vehicle: EmergencyVehicle object hoặc None
         """
+        # Chỉ xử lý callback khi ở chế độ Tự động
+        if self.mode != "Tự động":
+            return
+            
         try:
             # Map state sang tiếng Việt và màu sắc
             state_info = {
@@ -1208,9 +1217,13 @@ class SmartTrafficApp(ctk.CTk):
     
     def handle_priority_vehicles(self, tls_ids):
         """
-        Xử lý xe ưu tiên bằng Priority Controller
+        Xử lý xe ưu tiên bằng Priority Controller - CHỈ CHO CHẾ ĐỘ TỰ ĐỘNG
         Gọi step() method của controller để tự động xử lý toàn bộ logic
         """
+        # Chỉ xử lý xe ưu tiên khi ở chế độ Tự động
+        if self.mode != "Tự động":
+            return
+            
         try:
             if not hasattr(self, 'priority_controllers') or not self.priority_controllers:
                 return
@@ -2076,7 +2089,14 @@ class SmartTrafficApp(ctk.CTk):
                 self._ui_error_logged = True
 
     def update_priority_vehicle_data(self):
-        """Cập nhật dữ liệu xe ưu tiên theo hướng"""
+        """Cập nhật dữ liệu xe ưu tiên theo hướng - CHỈ CHO CHẾ ĐỘ TỰ ĐỘNG"""
+        # Chỉ cập nhật xe ưu tiên khi ở chế độ Tự động
+        if self.mode != "Tự động":
+            # Đảm bảo panel ẩn trong chế độ Mặc định
+            if self.has_priority_vehicles:
+                self.hide_priority_panel()
+            return
+        
         try:
             import traci
             
@@ -2134,7 +2154,11 @@ class SmartTrafficApp(ctk.CTk):
             pass
 
     def show_priority_panel(self):
-        """Hiển thị panel xe ưu tiên với animation"""
+        """Hiển thị panel xe ưu tiên với animation - CHỈ CHO CHẾ ĐỘ TỰ ĐỘNG"""
+        # Chỉ hiển thị panel khi ở chế độ Tự động
+        if self.mode != "Tự động":
+            return
+            
         if not self.has_priority_vehicles:
             self.has_priority_vehicles = True
             # Insert priority panel sau KPI panel (row=1)
