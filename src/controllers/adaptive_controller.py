@@ -83,6 +83,10 @@ class AdaptiveController:
         # Green debt system (cho PriorityController)
         self.green_debts: Dict[str, float] = defaultdict(float)  # {"Bắc": 10.5, "Nam": 5.2, ...}
         
+        # ✅ SC6: Backlog tracking (queue length tích lũy)
+        self.backlog_queues: Dict[str, List[float]] = defaultdict(list)  # Lịch sử queue length
+        self.max_backlog_history = 10  # Lưu 10 chu kỳ gần nhất
+        
         # Emergency mode params (SC6)
         self.normal_min_green = self.T_MIN_GREEN
         self.normal_max_green = self.T_MAX_GREEN
@@ -224,20 +228,29 @@ class AdaptiveController:
         queue_pcu = self.convert_to_pcu(direction)
         green_time = self.T_MIN_GREEN + (self.ALPHA * queue_pcu)
         
-        # ✅ BÙ NỢ THỜI GIAN XANH (từ PriorityController)
         direction_name = direction.value  # "Bắc", "Nam", "Đông", "Tây"
         
+        # ✅ SC6: GHI NHẬN BACKLOG
+        self.record_backlog(direction_name, queue_pcu)
+        
+        # ✅ SC6: BÙ NỢ THỜI GIAN XANH (dựa trên backlog severity)
         if direction_name in self.green_debts and self.green_debts[direction_name] > 0:
             debt = self.green_debts[direction_name]
             
-            # Bù một phần (30% mỗi chu kỳ để không quá đột ngột)
-            compensation = min(debt * 0.3, 15.0)  # Tối đa bù 15s mỗi lần
-            green_time += compensation
+            # Tính compensation dựa trên backlog severity
+            compensation = self.calculate_backlog_compensation(direction_name)
             
-            # Trừ nợ
-            self.green_debts[direction_name] -= compensation
-            
-            print(f"💰 {direction_name}: Bù {compensation:.1f}s (Nợ còn: {self.green_debts[direction_name]:.1f}s)")
+            if compensation > 0:
+                severity = self.get_backlog_severity(direction_name)
+                green_time += compensation
+                
+                # Trừ nợ
+                self.green_debts[direction_name] -= compensation
+                
+                print(f"💰 SC6-BACKLOG: {direction_name}")
+                print(f"   Queue: {queue_pcu:.1f} PCU")
+                print(f"   Severity: {severity:.0f}/100")
+                print(f"   Bù: {compensation:.1f}s (Nợ còn: {self.green_debts[direction_name]:.1f}s)")
         
         # Giới hạn trong khoảng [T_MIN_GREEN, T_MAX_GREEN]
         green_time = max(self.T_MIN_GREEN, min(green_time, self.T_MAX_GREEN))
@@ -646,3 +659,145 @@ class AdaptiveController:
         self.T_MIN_GREEN = self.normal_min_green
         self.T_MAX_GREEN = self.normal_max_green
         print(f"✅ Khôi phục tham số adaptive: min_green={self.T_MIN_GREEN}s, max_green={self.T_MAX_GREEN}s")
+    
+    def record_backlog(self, direction: str, queue_pcu: float):
+        """
+        SC6: Ghi nhận backlog (queue length) cho một hướng
+        
+        Args:
+            direction: Hướng giao thông ("Bắc", "Nam", "Đông", "Tây")
+            queue_pcu: Độ dài hàng chờ hiện tại (PCU)
+        """
+        self.backlog_queues[direction].append(queue_pcu)
+        
+        # Giới hạn lịch sử
+        if len(self.backlog_queues[direction]) > self.max_backlog_history:
+            self.backlog_queues[direction].pop(0)
+    
+    def get_backlog_severity(self, direction: str) -> float:
+        """
+        SC6: Tính mức độ nghiêm trọng của backlog
+        
+        Dựa trên:
+        - Queue length hiện tại
+        - Xu hướng tăng/giảm (so với trung bình)
+        - Thời gian chờ
+        
+        Args:
+            direction: Hướng cần đánh giá
+            
+        Returns:
+            Điểm severity (0-100, càng cao càng nghiêm trọng)
+        """
+        if direction not in self.backlog_queues or not self.backlog_queues[direction]:
+            return 0.0
+        
+        history = self.backlog_queues[direction]
+        current_queue = history[-1]
+        
+        # Nếu không có xe, không có backlog
+        if current_queue <= 0:
+            return 0.0
+        
+        # Tính trung bình queue length
+        avg_queue = sum(history) / len(history)
+        
+        # Tính xu hướng (queue hiện tại so với trung bình)
+        trend_factor = current_queue / max(avg_queue, 0.1)
+        
+        # Tính thời gian chờ
+        direction_enum = None
+        for d in TrafficDirection:
+            if d.value == direction:
+                direction_enum = d
+                break
+        
+        waiting_time = 0.0
+        if direction_enum:
+            waiting_time = self.calculate_waiting_time(direction_enum)
+        
+        # Công thức severity:
+        # - 40% từ queue length hiện tại (chuẩn hóa về 0-40)
+        # - 30% từ xu hướng (nếu tăng mạnh thì severity cao)
+        # - 30% từ waiting time (chuẩn hóa về 0-30)
+        
+        queue_score = min(current_queue / 20.0 * 40, 40)  # 20 PCU = 40 điểm
+        trend_score = min((trend_factor - 1.0) * 30, 30)  # Tăng 100% = 30 điểm
+        wait_score = min(waiting_time / 120.0 * 30, 30)   # 120s = 30 điểm
+        
+        severity = queue_score + trend_score + wait_score
+        
+        return min(severity, 100.0)
+    
+    def calculate_backlog_compensation(self, direction: str) -> float:
+        """
+        SC6: Tính thời gian bù backlog dựa trên mức độ nghiêm trọng
+        
+        Công thức thông minh:
+        - Severity thấp (0-30): Bù 20-30% debt
+        - Severity trung bình (30-60): Bù 40-60% debt
+        - Severity cao (60-100): Bù 70-100% debt + bonus
+        
+        Args:
+            direction: Hướng cần bù
+            
+        Returns:
+            Thời gian bù (giây)
+        """
+        severity = self.get_backlog_severity(direction)
+        debt = self.green_debts.get(direction, 0.0)
+        
+        if debt <= 0 or severity <= 0:
+            return 0.0
+        
+        # Tính tỷ lệ bù dựa trên severity
+        if severity < 30:
+            # Backlog nhẹ: Bù từ từ (20-30%)
+            compensation_rate = 0.20 + (severity / 30.0) * 0.10
+        elif severity < 60:
+            # Backlog trung bình: Bù nhanh hơn (40-60%)
+            compensation_rate = 0.40 + ((severity - 30) / 30.0) * 0.20
+        else:
+            # Backlog nghiêm trọng: Bù mạnh (70-100%)
+            compensation_rate = 0.70 + ((severity - 60) / 40.0) * 0.30
+        
+        compensation = debt * compensation_rate
+        
+        # Bonus cho backlog cực nghiêm trọng (severity > 80)
+        if severity > 80:
+            bonus = min((severity - 80) / 20.0 * 10.0, 10.0)  # Tối đa +10s
+            compensation += bonus
+            print(f"⚠️ {direction}: Backlog CỰC NGHIÊM TRỌNG (severity={severity:.0f}) → Bonus +{bonus:.1f}s")
+        
+        # Giới hạn compensation tối đa 20s/chu kỳ
+        compensation = min(compensation, 20.0)
+        
+        return compensation
+    
+    def get_all_backlog_report(self) -> Dict[str, Dict]:
+        """
+        SC6: Báo cáo backlog toàn bộ hệ thống
+        
+        Returns:
+            Dict chứa thông tin backlog mỗi hướng
+        """
+        report = {}
+        
+        for direction in ["Bắc", "Nam", "Đông", "Tây"]:
+            severity = self.get_backlog_severity(direction)
+            debt = self.green_debts.get(direction, 0.0)
+            compensation = self.calculate_backlog_compensation(direction)
+            
+            current_queue = 0.0
+            if direction in self.backlog_queues and self.backlog_queues[direction]:
+                current_queue = self.backlog_queues[direction][-1]
+            
+            report[direction] = {
+                'current_queue': current_queue,
+                'severity': severity,
+                'green_debt': debt,
+                'compensation': compensation,
+                'status': 'OK' if severity < 30 else 'WARNING' if severity < 60 else 'CRITICAL'
+            }
+        
+        return report

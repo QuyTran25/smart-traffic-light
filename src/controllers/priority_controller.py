@@ -1167,26 +1167,77 @@ class PriorityController:
         print(f"   Hướng bị ảnh hưởng: {', '.join(affected_directions)}")
         
         # --- BƯỚC 3: Tính thời gian bù (SC6) ---
+        # ✅ SC6-IMPROVED: Phân tích backlog và bù thông minh
+        if self.adaptive_controller:
+            print(f"=" * 60)
+            print(f"📊 SC6-BACKLOG ANALYSIS")
+            print(f"-" * 60)
+            
+            # Lấy báo cáo backlog toàn bộ
+            backlog_report = self.adaptive_controller.get_all_backlog_report()
+            
+            # Phân loại theo mức độ nghiêm trọng
+            critical_dirs = []
+            warning_dirs = []
+            ok_dirs = []
+            
+            for direction in affected_directions:
+                info = backlog_report.get(direction, {})
+                status = info.get('status', 'OK')
+                severity = info.get('severity', 0)
+                current_queue = info.get('current_queue', 0)
+                
+                print(f"   {direction}: Queue={current_queue:.1f} PCU, Severity={severity:.0f}/100 [{status}]")
+                
+                if status == 'CRITICAL':
+                    critical_dirs.append(direction)
+                elif status == 'WARNING':
+                    warning_dirs.append(direction)
+                else:
+                    ok_dirs.append(direction)
+            
+            print(f"-" * 60)
+        else:
+            # Fallback nếu không có adaptive controller
+            critical_dirs = []
+            warning_dirs = []
+            ok_dirs = list(affected_directions)
+        
         # Hệ số bù phụ thuộc vào emergency mode
         if self.emergency_mode_active:
-            compensation_factor = 0.5  # Bù 50% trong emergency mode
-            print(f"   ⚠️ Emergency mode: Bù 50% thời gian")
+            base_factor = 0.4  # Bù ít hơn trong emergency mode
+            print(f"   ⚠️ Emergency mode: Bù thận trọng hơn")
         else:
-            compensation_factor = 0.7  # Bù 70% bình thường
-            print(f"   Bù 70% thời gian cho các hướng bị ảnh hưởng")
+            base_factor = 0.6  # Bù bình thường
+            print(f"   Bù thời gian dựa trên mức độ backlog")
         
         # --- BƯỚC 4: Áp dụng bù cho Adaptive ---
         if self.adaptive_controller:
             try:
-                for direction in affected_directions:
-                    # Thời gian xanh bị mất = thời gian ưu tiên
+                # ✅ CHIẾN LƯỢC BÙ THÔNG MINH:
+                
+                # 1. Hướng CRITICAL: Bù 80-100%
+                for direction in critical_dirs:
                     lost_green = preemption_duration
-                    compensation_time = lost_green * compensation_factor
-                    
-                    # Thêm vào green debt
+                    compensation_time = lost_green * (base_factor + 0.30)  # +30%
                     self.adaptive_controller.add_green_debt(direction, compensation_time)
-                    
-                    print(f"   ➕ {direction}: Mất {lost_green:.1f}s → Bù {compensation_time:.1f}s")
+                    print(f"   🔴 CRITICAL {direction}: Bù {compensation_time:.1f}s ({int((base_factor + 0.30)*100)}%)")
+                
+                # 2. Hướng WARNING: Bù 60-80%
+                for direction in warning_dirs:
+                    lost_green = preemption_duration
+                    compensation_time = lost_green * (base_factor + 0.10)  # +10%
+                    self.adaptive_controller.add_green_debt(direction, compensation_time)
+                    print(f"   🟡 WARNING {direction}: Bù {compensation_time:.1f}s ({int((base_factor + 0.10)*100)}%)")
+                
+                # 3. Hướng OK: Bù 40-60%
+                for direction in ok_dirs:
+                    lost_green = preemption_duration
+                    compensation_time = lost_green * base_factor
+                    self.adaptive_controller.add_green_debt(direction, compensation_time)
+                    print(f"   🟢 OK {direction}: Bù {compensation_time:.1f}s ({int(base_factor*100)}%)")
+                
+                print(f"=" * 60)
                 
                 # Kích hoạt lại Adaptive
                 self.adaptive_controller.is_active = True

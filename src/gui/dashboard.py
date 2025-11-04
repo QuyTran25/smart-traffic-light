@@ -845,6 +845,17 @@ class SmartTrafficApp(ctk.CTk):
                                 priority_ctrl.step()
                             except Exception as e:
                                 self.log(f"⚠ PriorityController {junction_id} step error: {e}")
+                    
+                    # ĐẢM BẢO XE ƯU TIÊN LUÔN BỎ QUA ĐÈN ĐỎ (set lại mỗi step)
+                    try:
+                        all_vehicles = traci.vehicle.getIDList()
+                        for veh_id in all_vehicles:
+                            if "priority" in veh_id or veh_id.startswith("priority_"):
+                                current_speed_mode = traci.vehicle.getSpeedMode(veh_id)
+                                if current_speed_mode != 0:  # Nếu bị reset, set lại
+                                    traci.vehicle.setSpeedMode(veh_id, 0)
+                    except Exception as e:
+                        pass  # Không log để tránh spam
 
                     # update UI data & redraw
                     self.update_data_from_sumo()
@@ -1057,9 +1068,9 @@ class SmartTrafficApp(ctk.CTk):
             elif scenario_name == "SC6 - Nhiều xe ưu tiên liên tiếp":
                 self.log("🚑 SC6: Nhiều xe ưu tiên liên tiếp - Spawn liên tục từ cùng hướng.")
                 self.clear_all_priority_vehicles()
-                # Spawn liên tiếp xe ưu tiên từ CÙNG hướng (North) mỗi 10-12s
-                # Theo tài liệu: "20s sau lại có xe khác" → interval 10-15s là hợp lý
-                self.start_priority_spawning_consecutive(["north"], base_interval=12, scenario_id="SC6")
+                # Spawn liên tiếp xe ưu tiên từ CÙNG hướng (North) mỗi 6-8s (TĂNG TẦN SUẤT)
+                # Giảm interval xuống để thấy nhiều xe ưu tiên hơn
+                self.start_priority_spawning_consecutive(["north"], base_interval=1, scenario_id="SC6")
 
             else:
                 self.log("ℹ️ Không có kịch bản cụ thể, chạy mặc định.")
@@ -1502,8 +1513,8 @@ class SmartTrafficApp(ctk.CTk):
                     # Log tình huống liên tiếp
                     self.log(f"🚑🚑 SC6-CONSECUTIVE: Xe ưu tiên #{consecutive_count} từ {dir_name} (liên tiếp)")
                     
-                    # Interval biến đổi nhẹ (10-15s) để mô phỏng thực tế
-                    actual_interval = base_interval + random.uniform(-2, 3)
+                    # Interval biến đổi nhẹ (5-9s) - NHANH HƠN để thấy nhiều xe
+                    actual_interval = base_interval + random.uniform(-1, 2)
                     
                     # Đợi trước khi spawn xe tiếp theo
                     time.sleep(actual_interval)
@@ -1659,6 +1670,15 @@ class SmartTrafficApp(ctk.CTk):
                     if veh_id_j1 in traci.vehicle.getIDList():
                         edge = traci.vehicle.getRoadID(veh_id_j1)
                         
+                        # CHO PHÉP XE ƯU TIÊN VƯỢT ĐÈN ĐỎ
+                        # speedMode = 0: Bỏ qua TẤT CẢ quy tắc (aggressive mode)
+                        # speedMode = 32: Chỉ bỏ qua traffic lights
+                        try:
+                            traci.vehicle.setSpeedMode(veh_id_j1, 0)  # Thử mode 0 - bỏ qua tất cả
+                            self.log(f"🚨 [{veh_id_j1}] Đã set speedMode=0 (ignore ALL rules)")
+                        except Exception as e:
+                            self.log(f"❌ Lỗi set speedMode cho {veh_id_j1}: {e}")
+                        
                         # ĐỔI MÀU XE ƯU TIÊN ĐỂ DỄ NHÌN - Màu đỏ nổi bật
                         traci.vehicle.setColor(veh_id_j1, (255, 0, 0, 255))  # Đỏ rực
                         
@@ -1698,6 +1718,13 @@ class SmartTrafficApp(ctk.CTk):
                     time.sleep(0.3)
                     if veh_id_j4 in traci.vehicle.getIDList():
                         edge = traci.vehicle.getRoadID(veh_id_j4)
+                        
+                        # CHO PHÉP XE ƯU TIÊN VƯỢT ĐÈN ĐỎ
+                        try:
+                            traci.vehicle.setSpeedMode(veh_id_j4, 0)  # Thử mode 0 - bỏ qua tất cả
+                            self.log(f"🚨 [{veh_id_j4}] Đã set speedMode=0 (ignore ALL rules)")
+                        except Exception as e:
+                            self.log(f"❌ Lỗi set speedMode cho {veh_id_j4}: {e}")
                         
                         # ĐỔI MÀU XE ƯU TIÊN ĐỂ DỄ NHÌN - Màu đỏ nổi bật
                         traci.vehicle.setColor(veh_id_j4, (255, 0, 0, 255))  # Đỏ rực
