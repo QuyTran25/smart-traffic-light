@@ -9,15 +9,15 @@ Hệ thống có **2 CHẾ ĐỘ ĐIỀU KHIỂN**:
 ### 1️⃣ Chế độ **MẶC ĐỊNH** (Fixed-Time Control)
 - **Đặc điểm**: Chu kỳ đèn cố định, không thích ứng với mật độ giao thông
 - **Thời gian pha**: Được cấu hình trước và không thay đổi
-- **Xử lý xe ưu tiên**: ❌ **KHÔNG HỖ TRỢ** (xe ưu tiên chỉ hoạt động ở chế độ Tự động)
+- **Xử lý xe ưu tiên**: ✅ **THEO DÕI ONLY** (PriorityController chạy ở chế độ monitoring - không can thiệp đèn, chỉ tính KPI 8)
 - **Ưu điểm**: Đơn giản, dễ dự đoán, ổn định
-- **Nhược điểm**: Không tối ưu cho lưu lượng thay đổi
+- **Nhược điểm**: Không tối ưu cho lưu lượng thay đổi, xe ưu tiên không được ưu tiên đèn xanh
 
 ### 2️⃣ Chế độ **TỰ ĐỘNG** (Adaptive Control)
 - **Đặc điểm**: Điều chỉnh thời gian pha dựa trên mật độ giao thông thực tế
 - **Thời gian pha**: Động, tính toán theo công thức áp suất (Pressure-based)
-- **Xử lý xe ưu tiên**: ✅ **HỖ TRỢ ĐẦY ĐỦ** (6 kịch bản SC1-SC6)
-- **Ưu điểm**: Tối ưu hóa thông lượng, giảm thời gian chờ, hỗ trợ xe ưu tiên
+- **Xử lý xe ưu tiên**: ✅ **HỖ TRỢ ĐẦY ĐỦ** (PriorityController can thiệp đèn, 6 kịch bản SC1-SC6)
+- **Ưu điểm**: Tối ưu hóa thông lượng, giảm thời gian chờ, hỗ trợ xe ưu tiên với đèn xanh ưu tiên
 - **Nhược điểm**: Phức tạp hơn, phụ thuộc vào độ chính xác cảm biến
 
 ---
@@ -33,7 +33,7 @@ Hệ thống có **2 CHẾ ĐỘ ĐIỀU KHIỂN**:
 | 5 | **Thời gian chờ tối đa** (Max Waiting Time) | giây | Cả 2 chế độ |
 | 6 | **Độ dài chu kỳ** (Cycle Length) | giây | Cả 2 chế độ (khác nhau) |
 | 7 | **Chỉ số công bằng** (Fairness Index) | % | Cả 2 chế độ |
-| 8 | **Thời gian giải phóng xe ưu tiên** (Emergency Clearance Time) | giây | **CHỈ CHẾ ĐỘ TỰ ĐỘNG** |
+| 8 | **Thời gian giải phóng xe ưu tiên** (Emergency Clearance Time) | giây | **CẢ 2 CHẾ ĐỘ** (monitoring + full control) |
 
 ---
 
@@ -481,16 +481,23 @@ def calculate_fairness():
 
 **Định nghĩa**: Thời gian từ khi phát hiện xe ưu tiên đến khi xe qua ngã tư
 
-#### ⚠️ **CHỈ ÁP DỤNG CHO CHẾ ĐỘ TỰ ĐỘNG**
+#### ✅ **ÁP DỤNG CHO CẢ 2 CHẾ ĐỘ** (với cách hoạt động khác nhau)
 
 ```
-⛔ CHẾ ĐỘ MẶC ĐỊNH: KPI NÀY KHÔNG TỒN TẠI
-   Lý do: Chế độ Mặc định không hỗ trợ phát hiện và xử lý xe ưu tiên
+✅ CHẾ ĐỘ MẶC ĐỊNH: KPI ĐƯỢC TÍNH (Monitoring Mode)
+   - PriorityController chạy ở chế độ THEO DÕI
+   - Phát hiện xe ưu tiên, theo dõi và tính clearance time
+   - KHÔNG can thiệp đèn giao thông (đèn vẫn chạy Fixed-Time)
+   - Mục đích: So sánh baseline performance (xe ưu tiên không được ưu tiên)
 
-✅ CHẾ ĐỘ TỰ ĐỘNG: KPI NÀY ĐƯỢC TÍNH TOÁN ĐẦY ĐỦ
+✅ CHẾ ĐỘ TỰ ĐỘNG: KPI ĐƯỢC TÍNH (Full Control Mode)
+   - PriorityController chạy ở chế độ ĐIỀU KHIỂN ĐẦY ĐỦ
+   - Phát hiện xe ưu tiên, can thiệp đèn để ưu tiên
+   - Áp dụng 6 kịch bản SC1-SC6
+   - Mục đích: Đo lường hiệu quả của hệ thống ưu tiên xe khẩn cấp
 ```
 
-#### ✅ Công thức (CHỈ CHẾ ĐỘ TỰ ĐỘNG):
+#### ✅ Công thức (CẢ 2 CHẾ ĐỘ):
 
 ```
 Emergency_Clearance_Time = T_crossed - T_detected
@@ -500,11 +507,31 @@ Trong đó:
   → State transition: NORMAL → DETECTION
   → Điều kiện: vehicle.typeID == "priority" AND distance_to_junction < DETECTION_RADIUS (200m)
   
-- T_crossed: Thời điểm xe ưu tiên vượt qua trung tâm ngã tư
-  → Điều kiện: vehicle.position vượt qua junction center
+- T_crossed: Thời điểm xe ưu tiên vượt qua ngã tư
+  → Điều kiện: has_approached=True (đã gần < 30m) AND distance > 30m (đi xa)
+  → Logic 2 giai đoạn để tránh nhầm lẫn xe chưa đến vs xe đã qua
 
 Clearance_Time = T_crossed - T_detected (giây)
+
+📊 HIỂN THỊ REALTIME:
+- Khi xe đang được theo dõi (confirmed_vehicles):
+  KPI 8 = Elapsed Time (current_time - detection_time) ⏱️
+  → Cập nhật liên tục mỗi giây (nhảy realtime)
+  
+- Khi xe đã qua ngã tư (clearance_times):
+  KPI 8 = Average Clearance Time 📊
+  → Giá trị cố định (trung bình của tất cả xe đã qua)
 ```
+
+#### 🔄 So sánh giữa 2 chế độ:
+
+| Khía cạnh | Chế độ Mặc định | Chế độ Tự động |
+|-----------|----------------|----------------|
+| **PriorityController** | Monitoring Only | Full Control |
+| **Can thiệp đèn** | ❌ Không | ✅ Có (SC1-SC6) |
+| **Tính KPI 8** | ✅ Có | ✅ Có |
+| **Clearance Time mong đợi** | 15-30s (không ưu tiên) | 8-15s (có ưu tiên đèn xanh) |
+| **Mục đích** | Baseline comparison | Performance evaluation |
 
 #### 📊 Quy trình tính toán chi tiết:
 
@@ -558,14 +585,47 @@ def confirm_emergency_vehicle(vehicle):
             self.log(f"✅ XÁC NHẬN XE ƯU TIÊN: {vehicle.vehicle_id}")
 ```
 
-**Bước 3: CHUYỂN ĐỔI AN TOÀN (SAFE_TRANSITION)**
+**Bước 3: TRACKING (THEO DÕI)**
+```python
+# Theo dõi xe qua 2 giai đoạn (two-stage detection)
+
+def _track_confirmed_vehicles(current_time):
+    for vid, vehicle in confirmed_vehicles.items():
+        distance = calculate_distance_to_junction(vid)
+        
+        # Giai đoạn 1: Xe đến gần ngã tư
+        if distance < 30 and not vehicle.has_approached:
+            vehicle.has_approached = True
+            print(f"📍 Xe {vid} đã đến gần ngã tư (distance={distance:.1f}m)")
+        
+        # Giai đoạn 2: Xe đi xa sau khi đã gần (= đã qua ngã tư)
+        if vehicle.has_approached and distance > 30:
+            # GHI NHẬN THỜI ĐIỂM QUA NGA TƯ
+            crossed_time = current_time
+            clearance_time = crossed_time - vehicle.detection_time
+            
+            # Lưu vào lịch sử
+            self.clearance_times.append(clearance_time)
+            
+            print(f"✅ Xe {vid} đã qua ngã tư (distance={distance:.1f}m)")
+            print(f"📊 EMERGENCY CLEARANCE TIME: {clearance_time:.1f}s")
+```
+
+**Bước 4: CHUYỂN ĐỔI AN TOÀN (SAFE_TRANSITION)** - CHỈ CHẾ ĐỘ TỰ ĐỘNG
 ```python
 # Chờ đèn hiện tại hết vàng trước khi chuyển sang ưu tiên
 
 def safe_transition():
+    # ❌ BƯỚC NÀY BỊ BỎ QUA TRONG CHẾ ĐỘ MẶC ĐỊNH
+    # Vì adaptive_controller = None → không can thiệp đèn
+    
+    if self.adaptive_controller is None:
+        # Monitoring mode: Chỉ theo dõi, không chuyển state
+        return
+    
+    # ✅ CHỈ CHẠy TRONG CHẾ ĐỘ TỰ ĐỘNG
     current_phase = traci.trafficlight.getPhase(self.junction_id)
     
-    # Nếu đang ở pha vàng, chờ hết vàng
     if is_yellow_phase(current_phase):
         return
     
@@ -574,11 +634,14 @@ def safe_transition():
     self.apply_emergency_phase(vehicle)
 ```
 
-**Bước 4: ƯU TIÊN ĐANG HOẠT ĐỘNG (PREEMPTION_GREEN)**
+**Bước 5: ƯU TIÊN ĐANG HOẠT ĐỘNG (PREEMPTION_GREEN)** - CHỈ CHẾ ĐỘ TỰ ĐỘNG
 ```python
 # Áp dụng pha đèn khẩn cấp cho hướng xe ưu tiên
 
 def apply_emergency_phase(vehicle):
+    # ❌ BƯỚC NÀY BỊ BỎ QUA TRONG CHẾ ĐỘ MẶC ĐỊNH
+    
+    # ✅ CHỈ CHẠy TRONG CHẾ ĐỘ TỰ ĐỘNG
     # Tìm pha đèn phù hợp với hướng xe
     emergency_phase = get_emergency_phase_for_direction(vehicle.direction)
     
@@ -592,33 +655,60 @@ def apply_emergency_phase(vehicle):
     self.log(f"🚨 ÁP DỤNG PHA KHẨN CẤP: {vehicle.direction}")
 ```
 
-**Bước 5: GIẢI PHÓNG HOÀN TẤT (CLEARANCE COMPLETE)**
+**Bước 6: GIẢI PHÓNG HOÀN TẤT (CLEARANCE COMPLETE)** - CẢ 2 CHẾ ĐỘ
 ```python
-# Kiểm tra xe đã qua ngã tư chưa
+# Đã tính clearance time ở Bước 3 (khi xe qua ngã tư)
+# Giá trị được lưu vào self.clearance_times[]
 
-def check_clearance_complete(vehicle):
-    junction_pos = traci.junction.getPosition(self.junction_id)
-    vehicle_pos = traci.vehicle.getPosition(vehicle.vehicle_id)
-    
-    # Tính khoảng cách xe đến tâm ngã tư
-    distance = calculate_distance(vehicle_pos, junction_pos)
-    
-    # Nếu xe đã qua tâm ngã tư (đang đi xa)
-    if has_crossed_junction(vehicle, junction_pos):
-        # GHI NHẬN THỜI ĐIỂM QUA NGA TƯ
-        crossed_time = traci.simulation.getTime()
-        
-        # TÍNH CLEARANCE TIME
-        clearance_time = crossed_time - vehicle.detection_time
-        vehicle.clearance_time = clearance_time
-        
-        # Lưu vào lịch sử
-        self.clearance_times.append(clearance_time)
-        
-        self.log(f"✅ XE ƯU TIÊN ĐÃ QUA: {vehicle.vehicle_id}")
-        self.log(f"   Clearance Time: {clearance_time:.2f}s")
-        
-        # Chuyển sang RESTORE để khôi phục bình thường
-        self.state = PriorityState.RESTORE
+# Dashboard sẽ lấy giá trị này để hiển thị KPI 8:
+# - Nếu có xe đang theo dõi: Hiển thị REALTIME elapsed time
+# - Nếu không có xe đang theo dõi: Hiển thị AVERAGE clearance time
 ```
+
+#### 📈 Cách hiển thị KPI 8 (Dashboard):
+
+```python
+# Trong dashboard.py - update_data_from_sumo():
+
+def calculate_kpi_8():
+    emergency_clearance = 0.0
+    
+    # ƯU TIÊN 1: REALTIME - Xe đang được theo dõi
+    realtime_elapsed = None
+    for junction_id, priority_ctrl in priority_controllers.items():
+        if priority_ctrl.confirmed_vehicles:  # Có xe đang theo dõi
+            for vid, vehicle in priority_ctrl.confirmed_vehicles.items():
+                elapsed = current_time - vehicle.detection_time
+                if realtime_elapsed is None or elapsed > realtime_elapsed:
+                    realtime_elapsed = elapsed
+                print(f"⏱️ REALTIME KPI 8: Xe {vid} - Elapsed = {elapsed:.1f}s")
+    
+    # ƯU TIÊN 2: AVERAGE - Xe đã qua ngã tư
+    if realtime_elapsed is not None:
+        emergency_clearance = round(realtime_elapsed, 1)  # Hiển thị realtime
+    else:
+        # Tính average từ clearance_times
+        clearance_times = []
+        for priority_ctrl in priority_controllers.values():
+            clearance_times.extend(priority_ctrl.clearance_times)
+        
+        if clearance_times:
+            emergency_clearance = round(sum(clearance_times) / len(clearance_times), 1)
+            print(f"📊 KPI 8 Average = {emergency_clearance}s (từ {len(clearance_times)} xe)")
+    
+    return emergency_clearance
+```
+
+#### 🎯 Ý nghĩa so sánh:
+
+- **Chế độ Mặc định**: Đo baseline performance (xe ưu tiên không được ưu tiên)
+  - Clearance Time: 15-30s (phụ thuộc chu kỳ đèn)
+  - Mục đích: So sánh với chế độ Tự động
+  
+- **Chế độ Tự động**: Đo hiệu quả của hệ thống ưu tiên
+  - Clearance Time: 8-15s (có đèn xanh ưu tiên)
+  - Giảm 30-50% so với chế độ Mặc định
+  - Chứng minh hiệu quả của PriorityController
+
+---
 

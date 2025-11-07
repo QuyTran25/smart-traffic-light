@@ -75,14 +75,14 @@ class SmartTrafficApp(ctk.CTk):
 
         # KPI & intersection data
         self.global_kpi_data = {
-            "Tổng xe": 0,
-            "Độ trễ TB": 0.0,
-            "Lưu lượng": 0,
-            "Hàng chờ TB": 0.0,
-            "Dừng TB": 0.0,
-            "Chờ tối đa": 0.0,
-            "Chu kỳ TB": 0,
-            "Công bằng": 0.0
+            "Độ trễ TB": 0.0,           # KPI 1: Average Delay
+            "Hàng chờ TB": 0.0,         # KPI 2: Queue Length
+            "Lưu lượng": 0,             # KPI 3: Throughput
+            "Dừng TB": 0.0,             # KPI 4: Stops per Vehicle
+            "Chờ tối đa": 0.0,          # KPI 5: Max Waiting Time
+            "Chu kỳ TB": 0,             # KPI 6: Cycle Length
+            "Công bằng": 0.0,           # KPI 7: Fairness Index
+            "Giải phóng xe UT": 0.0        # KPI 8: Emergency Clearance Time (CẢ 2 CHẾ ĐỘ)
         }
         
         # Sensor data
@@ -373,15 +373,18 @@ class SmartTrafficApp(ctk.CTk):
         kpi_grid = ctk.CTkFrame(section, fg_color="transparent")
         kpi_grid.pack(fill="x", padx=8, pady=(0, 8))
         self.global_kpi_cards = {}
+        # Sắp xếp theo thứ tự KPI 1-8 (trái → phải, trên → dưới)
         kpi_data = [
-            ("Tổng xe", "—", "xe", "#dbeafe", "#1e3a8a", "🚗"),
-            ("Độ trễ TB", "—", "s/xe", "#fef3c7", "#78350f", "⏱"),
-            ("Lưu lượng", "—", "xe/h", "#d1fae5", "#065f46", "📈"),
-            ("Hàng chờ TB", "—", "PCU", "#fecaca", "#991b1b", "🚦"),
-            ("Dừng TB", "—", "lần", "#e0e7ff", "#3730a3", "⏹"),
-            ("Chờ tối đa", "—", "s", "#fed7aa", "#9a3412", "⏰"),
-            ("Chu kỳ TB", "—", "s", "#ddd6fe", "#5b21b6", "💡"),
-            ("Công bằng", "—", "%", "#fce7f3", "#831843", "⚖"),
+            # Hàng 1: KPI 1-4
+            ("Độ trễ TB", "—", "s/xe", "#fef3c7", "#78350f", "⏱️"),       # KPI 1: Average Delay
+            ("Hàng chờ TB", "—", "PCU", "#fecaca", "#991b1b", "🚗"),      # KPI 2: Queue Length
+            ("Lưu lượng", "—", "xe/h", "#d1fae5", "#065f46", "🚦"),       # KPI 3: Throughput
+            ("Dừng TB", "—", "lần", "#e0e7ff", "#3730a3", "⏹️"),          # KPI 4: Stops per Vehicle
+            # Hàng 2: KPI 5-8
+            ("Chờ tối đa", "—", "s", "#fed7aa", "#9a3412", "⏰"),          # KPI 5: Max Waiting Time
+            ("Chu kỳ TB", "—", "s", "#ddd6fe", "#5b21b6", "🔄"),          # KPI 6: Cycle Length
+            ("Công bằng", "—", "%", "#fce7f3", "#831843", "⚖️"),          # KPI 7: Fairness Index
+            ("Giải phóng xe UT", "—", "s", "#dbeafe", "#1e3a8a", "🚨"),      # KPI 8: Emergency Clearance Time
         ]
         for idx, (name, value, unit, bg_color, text_color, icon) in enumerate(kpi_data):
             row = idx // 4  # Changed from 3 to 4 columns
@@ -704,6 +707,9 @@ class SmartTrafficApp(ctk.CTk):
                 self.log("✅ Áp dụng thời gian static cho tất cả đèn (Mặc định).")
             except Exception as e:
                 self.log(f"⚠ Không thể áp dụng thời gian: {e}")
+            
+            # ✅ Khởi động PriorityController để theo dõi xe ưu tiên (không can thiệp đèn)
+            self.start_priority_controllers_monitoring()
 
         elif self.mode == "Tự động":
             self.start_controllers_if_needed()
@@ -780,6 +786,17 @@ class SmartTrafficApp(ctk.CTk):
             
         except Exception as e:
             self.log(f"⚠ Lỗi khi khởi tạo controllers: {e}")
+
+    def start_priority_controllers_monitoring(self):
+        """
+        Khởi động Priority Controllers ở chế độ MONITORING (không can thiệp đèn)
+        Dùng cho chế độ Mặc định để theo dõi xe ưu tiên và tính KPI 8
+        """
+        try:
+            self.init_priority_controllers()
+            self.log("🚨 Khởi động Priority Controllers (monitoring mode - không can thiệp đèn)")
+        except Exception as e:
+            self.log(f"⚠ Lỗi khi khởi động Priority Controllers monitoring: {e}")
 
     def stop_all_controllers(self):
         # Stop adaptive controllers
@@ -923,14 +940,14 @@ class SmartTrafficApp(ctk.CTk):
 
         # Reset KPI data
         self.global_kpi_data = {
-            "Tổng xe": 0,
-            "Độ trễ TB": 0.0,
-            "Lưu lượng": 0,
-            "Hàng chờ TB": 0.0,
-            "Dừng TB": 0.0,
-            "Chờ tối đa": 0.0,
-            "Chu kỳ TB": 0,
-            "Công bằng": 0.0
+            "Độ trễ TB": 0.0,           # KPI 1: Average Delay
+            "Hàng chờ TB": 0.0,         # KPI 2: Queue Length
+            "Lưu lượng": 0,             # KPI 3: Throughput
+            "Dừng TB": 0.0,             # KPI 4: Stops per Vehicle
+            "Chờ tối đa": 0.0,          # KPI 5: Max Waiting Time
+            "Chu kỳ TB": 0,             # KPI 6: Cycle Length
+            "Công bằng": 0.0,           # KPI 7: Fairness Index
+            "Giải phóng xe UT": 0.0        # KPI 8: Emergency Clearance Time
         }
 
         # Reset intersection data
@@ -1131,15 +1148,14 @@ class SmartTrafficApp(ctk.CTk):
             self.log(f"⚠️ Lỗi khi xóa xe ưu tiên: {e}")
     
     def init_priority_controllers(self):
-        """Khởi tạo Priority Controllers cho các ngã tư - CHỈ CHO CHẾ ĐỘ TỰ ĐỘNG"""
+        """Khởi tạo Priority Controllers cho các ngã tư - HỖ TRỢ CẢ 2 CHẾ ĐỘ"""
         if PriorityController is None:
             self.log("⚠️ PriorityController không khả dụng!")
             return
         
-        # Chỉ khởi động Priority Controller khi ở chế độ Tự động
-        if self.mode != "Tự động":
-            self.log("ℹ️ Chế độ Mặc định không hỗ trợ xe ưu tiên")
-            return
+        # ✅ THAY ĐỔI: Cho phép khởi động ở cả 2 chế độ
+        # - Chế độ Tự động: Priority Controller CAN THIỆP đèn giao thông
+        # - Chế độ Mặc định: Priority Controller CHỈ THEO DÕI (monitoring) để tính KPI 8
         
         try:
             import traci
@@ -1148,8 +1164,8 @@ class SmartTrafficApp(ctk.CTk):
             for tls_id in tls_ids[:2]:  # J1 và J4
                 junction_id = "J1" if tls_ids.index(tls_id) == 0 else "J4"
                 
-                # Lấy adaptive controller tương ứng nếu có
-                adaptive_ctrl = self.controllers.get(tls_id, None)
+                # Lấy adaptive controller tương ứng nếu có (CHỈ chế độ Tự động)
+                adaptive_ctrl = self.controllers.get(tls_id, None) if self.mode == "Tự động" else None
                 
                 # Tạo Priority Controller với UI callback
                 priority_ctrl = PriorityController(
@@ -1161,7 +1177,8 @@ class SmartTrafficApp(ctk.CTk):
                 # Khởi động controller
                 if priority_ctrl.start():
                     self.priority_controllers[junction_id] = priority_ctrl
-                    self.log(f"✅ PriorityController [{junction_id}] đã khởi động (CHẾ ĐỘ TỰ ĐỘNG)")
+                    mode_info = "CAN THIỆP ĐÈN" if self.mode == "Tự động" else "CHỈ THEO DÕI (KPI 8)"
+                    self.log(f"✅ PriorityController [{junction_id}] đã khởi động ({mode_info})")
                 else:
                     self.log(f"❌ Không thể khởi động PriorityController [{junction_id}]")
         
@@ -1753,15 +1770,15 @@ class SmartTrafficApp(ctk.CTk):
         """
         Lấy dữ liệu thực từ SUMO và tính toán KPI theo CÔNG THỨC NHÓM:
         
-        KPI CHÍNH (8 chỉ số):
-        1. Tổng xe: Tổng số xe trong simulation
-        2. Độ trễ TB (Average Delay): travelTime - freeFlowTime (s/xe)
+        KPI CHÍNH (8 chỉ số - sắp xếp từ trái sang phải, trên xuống dưới):
+        1. Độ trễ TB (Average Delay): travelTime - freeFlowTime (s/xe)
+        2. Hàng chờ TB (Average Queue Length): Số xe chờ trung bình (PCU)
         3. Lưu lượng (Throughput): Số xe qua giao lộ/giờ (xe/h hoặc PCU/h)
-        4. Hàng chờ TB (Average Queue Length): Số xe chờ trung bình (PCU)
-        5. Dừng TB (Average Stops): Số lần dừng trung bình/xe
-        6. Chờ tối đa (Maximum Waiting Time): Thời gian chờ lâu nhất (s)
-        7. Chu kỳ TB (Average Cycle): Chu kỳ đèn trung bình (s)
-        8. Công bằng (Fairness Index): So sánh max và trung bình wait time (%)
+        4. Dừng TB (Average Stops): Số lần dừng trung bình/xe
+        5. Chờ tối đa (Maximum Waiting Time): Thời gian chờ lâu nhất (s)
+        6. Chu kỳ TB (Average Cycle): Chu kỳ đèn trung bình (s)
+        7. Công bằng (Fairness Index): So sánh max và trung bình wait time (%)
+        8. Giải phóng xe UT (Emergency Clearance Time): Thời gian giải phóng xe ưu tiên (s) - Cả 2 chế độ
         
         METRICS PHỤ (theo ngã tư):
         - Queue length: Số xe đang chờ
@@ -1885,26 +1902,23 @@ class SmartTrafficApp(ctk.CTk):
             
             # === TÍNH CÁC KPI TRUNG BÌNH ===
             
-            # 1. TỔNG XE (hiển thị số xe hiện tại)
-            total_vehicles = total_vehicles_in_sim
-            
-            # 2. ĐỘ TRỄ TB (Average Delay - s/xe)
+            # 1. ĐỘ TRỄ TB (Average Delay - s/xe) - KPI 1
             avg_delay = round(total_delay / vehicles_with_data, 1) if vehicles_with_data > 0 else 0.0
             
-            # 3. LƯU LƯỢNG (Throughput - xe/giờ)
+            # 2. HÀNG CHỜ TB (Average Queue Length - PCU) - KPI 2
+            avg_queue_pcu = round(total_queue_pcu, 1)
+            
+            # 3. LƯU LƯỢNG (Throughput - xe/giờ) - KPI 3
             if current_time > 0:
                 time_hours = current_time / 3600.0
                 throughput = int(arrived_count / time_hours) if time_hours > 0 else 0
             else:
                 throughput = 0
             
-            # 4. HÀNG CHỜ TB (Average Queue Length - PCU)
-            avg_queue_pcu = round(total_queue_pcu, 1)
-            
-            # 5. Dừng TB (Average Stops per Vehicle - lần)
+            # 4. DỪNG TB (Average Stops per Vehicle - lần) - KPI 4
             avg_stops = round(total_stops / vehicles_with_data, 2) if vehicles_with_data > 0 else 0.0
             
-            # 6. Chờ tối đa (Maximum Waiting Time - s)
+            # 5. CHỜ TỐI ĐA (Maximum Waiting Time - s) - KPI 5
             # Mục tiêu: < 60s (tốt), < 120s (chấp nhận được)
             max_wait = round(max_waiting_time, 1)
 
@@ -2010,17 +2024,51 @@ class SmartTrafficApp(ctk.CTk):
                     fairness = 100.0
             else:
                 fairness = 100.0
+            
+            # 8. Giải phóng xe UT (Emergency Clearance Time - s) - KPI 8
+            # ✅ Tính toán cho CẢ 2 CHẾ ĐỘ (Mặc định + Tự động)
+            # ✅ REALTIME: Hiển thị elapsed time cho xe đang theo dõi, hoặc average cho xe đã qua
+            emergency_clearance = 0.0
+            if hasattr(self, 'priority_controllers') and self.priority_controllers:
+                # Ưu tiên 1: Hiển thị REALTIME elapsed time cho xe đang được theo dõi (confirmed vehicles)
+                realtime_elapsed = None
+                for junction_id, priority_ctrl in self.priority_controllers.items():
+                    if hasattr(priority_ctrl, 'confirmed_vehicles') and priority_ctrl.confirmed_vehicles:
+                        # Có xe đang được theo dõi → hiển thị elapsed time từ khi phát hiện
+                        for vid, vehicle in priority_ctrl.confirmed_vehicles.items():
+                            if hasattr(vehicle, 'detection_time'):
+                                elapsed = current_time - vehicle.detection_time  # current_time đã có sẵn từ trên
+                                if realtime_elapsed is None or elapsed > realtime_elapsed:
+                                    realtime_elapsed = elapsed  # Lấy xe có elapsed time cao nhất
+                                print(f"⏱️ REALTIME KPI 8: Xe {vid} đang theo dõi - Elapsed = {elapsed:.1f}s")
+                
+                # Ưu tiên 2: Nếu không có xe realtime, hiển thị average của xe đã qua
+                if realtime_elapsed is not None:
+                    emergency_clearance = round(realtime_elapsed, 1)
+                else:
+                    # Tính average từ clearance_times (xe đã qua)
+                    clearance_times = []
+                    for junction_id, priority_ctrl in self.priority_controllers.items():
+                        if hasattr(priority_ctrl, 'clearance_times') and len(priority_ctrl.clearance_times) > 0:
+                            clearance_times.extend(priority_ctrl.clearance_times)
+                            print(f"🔍 DEBUG KPI 8 [{junction_id}]: {len(priority_ctrl.clearance_times)} clearance times = {priority_ctrl.clearance_times}")
+                    
+                    if clearance_times:
+                        emergency_clearance = round(sum(clearance_times) / len(clearance_times), 1)
+                        print(f"🔍 DEBUG KPI 8: Average = {emergency_clearance}s (từ {len(clearance_times)} xe đã qua)")
+                    else:
+                        print(f"🔍 DEBUG KPI 8: Không có xe (chưa phát hiện xe ưu tiên)")
 
             # === CẬP NHẬT GLOBAL KPI ===
             self.global_kpi_data = {
-                "Tổng xe": total_vehicles,
-                "Độ trễ TB": avg_delay,
-                "Lưu lượng": throughput,
-                "Hàng chờ TB": avg_queue_pcu,
-                "Dừng TB": avg_stops,
-                "Chờ tối đa": max_wait,
-                "Chu kỳ TB": avg_cycle,
-                "Công bằng": fairness
+                "Độ trễ TB": avg_delay,            # KPI 1
+                "Hàng chờ TB": avg_queue_pcu,      # KPI 2
+                "Lưu lượng": throughput,           # KPI 3
+                "Dừng TB": avg_stops,              # KPI 4
+                "Chờ tối đa": max_wait,            # KPI 5
+                "Chu kỳ TB": avg_cycle,            # KPI 6
+                "Công bằng": fairness,             # KPI 7
+                "Giải phóng xe UT": emergency_clearance  # KPI 8 (CẢ 2 CHẾ ĐỘ)
             }
             
             # === BƯỚC 5: Cập nhật Sensor Data (E1/E2 Detectors) ===
@@ -2064,7 +2112,11 @@ class SmartTrafficApp(ctk.CTk):
             
             if current_time - self._last_kpi_log_time >= 10:
                 self._last_kpi_log_time = current_time
-                self.log(f"📊 KPI | Xe:{total_vehicles} | Delay:{avg_delay}s/xe | Throughput:{throughput}xe/h | Queue:{avg_queue_pcu}PCU | Stops:{avg_stops} | MaxWait:{max_wait}s | Cycle:{avg_cycle}s | Fairness:{fairness}%")
+                # Log KPI với Tổng xe ở đầu
+                if emergency_clearance > 0:
+                    self.log(f"📊 KPI | Xe:{total_vehicles_in_sim} | Delay:{avg_delay}s/xe | Throughput:{throughput}xe/h | Queue:{avg_queue_pcu}PCU | Stops:{avg_stops} | MaxWait:{max_wait}s | Cycle:{avg_cycle}s | Fairness:{fairness}% | EmergencyClear:{emergency_clearance}s")
+                else:
+                    self.log(f"📊 KPI | Xe:{total_vehicles_in_sim} | Delay:{avg_delay}s/xe | Throughput:{throughput}xe/h | Queue:{avg_queue_pcu}PCU | Stops:{avg_stops} | MaxWait:{max_wait}s | Cycle:{avg_cycle}s | Fairness:{fairness}%")
 
         except Exception as e:
             # Log chi tiết lỗi để debug (chỉ 1 lần)

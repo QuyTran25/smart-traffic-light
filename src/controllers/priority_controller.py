@@ -39,6 +39,9 @@ class EmergencyVehicle:
         # ✅ KPI: Emergency Clearance Time
         self.clearance_time: Optional[float] = None  # Thời gian từ phát hiện → qua ngã tư
         self.clearance_start_time: Optional[float] = None  # Thời gian bắt đầu clearance
+        
+        # ✅ Tracking: Phát hiện xe đã qua ngã tư
+        self.has_approached = False  # True khi xe đã đến gần ngã tư (distance < 30m)
 
 class PriorityController:
     """
@@ -203,6 +206,9 @@ class PriorityController:
         # Lưu vào danh sách để tính thống kê
         self.clearance_times.append(clearance_time)
         
+        # Debug: In số lượng clearance times
+        print(f"🔍 DEBUG: Đã thêm vào clearance_times. Tổng: {len(self.clearance_times)} xe. List: {self.clearance_times}")
+        
         # Đánh giá theo tiêu chuẩn tài liệu
         print(f"📊 EMERGENCY CLEARANCE TIME: {clearance_time:.1f}s")
         print(f"   Xe: {vehicle.vehicle_id}")
@@ -225,6 +231,69 @@ class PriorityController:
         vehicle.clearance_evaluation = evaluation
         
         return clearance_time, evaluation
+    
+    def _track_confirmed_vehicles(self, current_time: float):
+        """
+        Theo dõi xe ưu tiên đã xác nhận, phát hiện xe đã qua ngã tư
+        
+        Logic:
+        - Xe "đã qua ngã tư" khi: has_approached=True (đã gần) AND distance > 30m (đi xa)
+        - Tránh nhầm lẫn xe chưa đến (distance=131m) với xe đã qua (distance=131m sau ngã tư)
+        
+        Được gọi từ DETECTION, PREEMPTION_GREEN, HOLD_PREEMPTION states
+        
+        Args:
+            current_time: Thời gian hiện tại
+        """
+        for vid, vehicle in list(self.confirmed_vehicles.items()):
+            try:
+                # Kiểm tra xe còn trong simulation không
+                if vid not in traci.vehicle.getIDList():
+                    # Xe đã despawn → Đã qua
+                    vehicle.served = True
+                    
+                    # ✅ Tính Emergency Clearance Time
+                    self._calculate_and_log_clearance_time(vehicle, current_time)
+                    
+                    self.served_vehicles.append(vehicle)
+                    del self.confirmed_vehicles[vid]
+                    print(f"✅ Xe {vid} đã qua ngã tư (despawned)")
+                    continue
+                
+                # Tính lại distance
+                distance = self.calculate_distance_to_junction(vid)
+                
+                # Debug: In distance để kiểm tra
+                if vid not in getattr(self, '_debug_distance_logged', set()):
+                    if not hasattr(self, '_debug_distance_logged'):
+                        self._debug_distance_logged = set()
+                    print(f"🔍 DEBUG Distance: Xe {vid} - distance = {distance:.1f}m, has_approached = {vehicle.has_approached}")
+                
+                # ✅ LOGIC MỚI: Tracking 2 giai đoạn
+                # Giai đoạn 1: Xe đến gần ngã tư (distance < 30m)
+                if distance < 30 and not vehicle.has_approached:
+                    vehicle.has_approached = True
+                    print(f"📍 Xe {vid} đã đến gần ngã tư (distance={distance:.1f}m)")
+                
+                # Giai đoạn 2: Xe đi xa khỏi ngã tư (distance > 30m) SAU KHI đã đến gần
+                if vehicle.has_approached and distance > 30:
+                    # Xe đã qua ngã tư: đã gần (< 30m) → bây giờ xa (> 30m)
+                    vehicle.served = True
+                    
+                    # ✅ Tính Emergency Clearance Time
+                    self._calculate_and_log_clearance_time(vehicle, current_time)
+                    
+                    self.served_vehicles.append(vehicle)
+                    del self.confirmed_vehicles[vid]
+                    print(f"✅ Xe {vid} đã qua ngã tư (distance={distance:.1f}m, đi xa sau khi đã gần)")
+                    
+                    # Log lại để tracking distance lần sau (cho xe khác)
+                    if hasattr(self, '_debug_distance_logged'):
+                        self._debug_distance_logged.discard(vid)
+                    continue
+                    
+            except Exception as e:
+                print(f"⚠️ Lỗi khi tracking xe {vid}: {e}")
     
     def get_junction_position(self) -> Tuple[float, float]:
         """
@@ -672,6 +741,7 @@ class PriorityController:
         """
         Xử lý trạng thái DETECTION
         Logic:
+        - Bước 0: Theo dõi xe đã qua ngã tư (tracking)
         - Bước 1: Chọn xe ưu tiên (SC3)
         - Bước 2: Kiểm tra ETA
         - Bước 3: Kiểm tra rate limit (SC6)
@@ -679,6 +749,10 @@ class PriorityController:
         - Bước 5: Kiểm tra safe_min_green (SC2)
         """
         current_time = traci.simulation.getTime()
+        
+        # --- BƯỚC 0: Theo dõi xe đã qua ngã tư (tracking) ---
+        # QUAN TRỌNG: Phải tracking ngay cả khi ở DETECTION state!
+        self._track_confirmed_vehicles(current_time)
         
         # --- BƯỚC 1: Chọn xe ưu tiên ---
         priority_vehicle = self.select_priority_vehicle_smart()
@@ -929,40 +1003,19 @@ class PriorityController:
                 })
                 return
         
-        # --- BƯỚC 3: Theo dõi xe ---
-        active_vehicles = []
+        # --- BƯỚC 3: Theo dõi xe (sử dụng function chung) ---
+        self._track_confirmed_vehicles(current_time)
         
+        # --- BƯỚC 4: Kiểm tra xe bị kẹt (SC5) ---
         for vid, vehicle in list(self.confirmed_vehicles.items()):
             try:
-                # Kiểm tra xe còn trong simulation không
                 if vid not in traci.vehicle.getIDList():
-                    # Xe đã despawn → Đã qua
-                    vehicle.served = True
-                    
-                    # ✅ Tính Emergency Clearance Time
-                    self._calculate_and_log_clearance_time(vehicle, current_time)
-                    
-                    self.served_vehicles.append(vehicle)
-                    print(f"✅ Xe {vid} đã qua ngã tư (despawned)")
                     continue
                 
-                # Tính lại distance
                 distance = self.calculate_distance_to_junction(vid)
-                
-                if distance > 50:
-                    # Xe đã qua ngã tư (50m sau junction)
-                    vehicle.served = True
-                    
-                    # ✅ Tính Emergency Clearance Time
-                    self._calculate_and_log_clearance_time(vehicle, current_time)
-                    
-                    self.served_vehicles.append(vehicle)
-                    print(f"✅ Xe {vid} đã qua ngã tư (distance={distance:.1f}m)")
-                    continue
                 
                 # Xe vẫn còn trong vùng
                 if distance < 200:
-                    # --- BƯỚC 3: Kiểm tra xe bị kẹt (SC5) ---
                     speed = traci.vehicle.getSpeed(vid)
                     
                     if speed < 2.0 and elapsed > 15:
@@ -981,29 +1034,11 @@ class PriorityController:
                             })
                             return
                     
-                    active_vehicles.append(vehicle)
-                    
             except Exception as e:
-                print(f"⚠️ Lỗi khi kiểm tra xe {vid}: {e}")
-        
-        # Cập nhật danh sách xe active
-        self.confirmed_vehicles = {v.vehicle_id: v for v in active_vehicles}
-        
-        # --- BƯỚC 4: SC4 - Kiểm tra tất cả xe vẫn hợp lệ ---
-        # Lọc ra các xe không còn hợp lệ (báo giả)
-        valid_vehicles = []
-        for vehicle in active_vehicles:
-            if self._verify_emergency_vehicle_exists(vehicle.vehicle_id, 'PREEMPTION_GREEN'):
-                valid_vehicles.append(vehicle)
-            else:
-                print(f"⚠️ SC4: Xe {vehicle.vehicle_id} không còn hợp lệ, loại khỏi danh sách")
-        
-        # Cập nhật lại danh sách xe hợp lệ
-        active_vehicles = valid_vehicles
-        self.confirmed_vehicles = {v.vehicle_id: v for v in active_vehicles}
+                print(f"⚠️ Lỗi khi kiểm tra SC5 cho xe {vid}: {e}")
         
         # --- BƯỚC 5: Kiểm tra điều kiện kết thúc ---
-        if not active_vehicles:
+        if not self.confirmed_vehicles:
             # Không còn xe nào → Kết thúc ngay
             print(f"✅ Tất cả xe đã qua (elapsed={elapsed:.1f}s)")
             self.transition_to_state(PreemptionState.RESTORE, {
@@ -1015,8 +1050,11 @@ class PriorityController:
         
         # Nếu còn xe VÀ đã đủ min_green (8s) → Kiểm tra xe gần nhất
         if elapsed >= self.PREEMPT_MIN_GREEN:
+            # Lấy danh sách xe còn lại
+            remaining_vehicles = list(self.confirmed_vehicles.values())
+            
             # Tìm xe gần ngã tư nhất
-            closest_distance = min(v.distance for v in active_vehicles) if active_vehicles else float('inf')
+            closest_distance = min(v.distance for v in remaining_vehicles) if remaining_vehicles else float('inf')
             
             # Nếu xe gần nhất đã rất gần (< 30m) → Chờ thêm
             if closest_distance < 30:
@@ -1025,11 +1063,11 @@ class PriorityController:
             
             # Nếu xe còn xa (≥30m) và đã đủ min_green → Chuyển RESTORE
             print(f"✅ Đủ {self.PREEMPT_MIN_GREEN}s min_green, xe gần nhất còn {closest_distance:.1f}m")
-            print(f"   → Chuyển RESTORE (còn {len(active_vehicles)} xe chưa qua)")
+            print(f"   → Chuyển RESTORE (còn {len(remaining_vehicles)} xe chưa qua)")
             self.transition_to_state(PreemptionState.RESTORE, {
                 'reason': 'min_green_reached',
                 'green_duration': elapsed,
-                'remaining_vehicles': len(active_vehicles)
+                'remaining_vehicles': len(remaining_vehicles)
             })
             return
         
@@ -1048,6 +1086,9 @@ class PriorityController:
         
         # Timeout 30s (theo tài liệu SC5)
         HOLD_TIMEOUT = 30.0
+        
+        # Theo dõi tất cả xe (có thể có nhiều xe cùng lúc)
+        self._track_confirmed_vehicles(current_time)
         
         if not self.priority_vehicle:
             # Không có xe ưu tiên, chuyển RESTORE
@@ -1085,7 +1126,8 @@ class PriorityController:
                 })
                 return
             
-            if distance > 50:
+            # GIẢM NGƯỠNG: 50m → 30m
+            if distance > 30:
                 # Xe đã qua ngã tư
                 print(f"✅ SC5: Xe {vehicle_id} đã qua ngã tư")
                 print(f"   Distance: {distance:.1f}m, Elapsed: {elapsed:.1f}s")
