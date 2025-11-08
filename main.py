@@ -1,8 +1,8 @@
+# -*- coding: utf-8 -*-
 # Entry point: chạy hệ thống
 import sys
 import os
 import time
-
 import subprocess
 
 # Thêm đường dẫn src vào sys.path để import được modules

@@ -1070,9 +1070,9 @@ class SmartTrafficApp(ctk.CTk):
                 self.start_priority_spawning(["north", "south"], interval=3, scenario_id="SC3")
 
             elif scenario_name == "SC4 - Báo giả":
-                self.log("🚨 SC4: Báo giả - Chỉ log thông báo, không spawn xe thật.")
+                self.log("🚨 SC4: Báo giả - Spawn xe rồi XÓA ngay để test xác nhận kép của PriorityController.")
                 self.clear_all_priority_vehicles()
-                # Chỉ log thông báo báo giả, không spawn xe
+                # Spawn xe → Xóa sau 2-3s → PriorityController phát hiện báo giả
                 self.start_false_alarm_simulation(interval=30)
 
             elif scenario_name == "SC5 - Xe ưu tiên bị kẹt trong dòng xe dài":
@@ -1285,26 +1285,7 @@ class SmartTrafficApp(ctk.CTk):
         except Exception as e:
             self.log(f"⚠️ Lỗi handle_priority_vehicles: {e}")
     
-    def start_false_alarm_simulation(self, interval=30):
-        """
-        SC4: Mô phỏng báo giả - Tín hiệu phát hiện xe ưu tiên nhưng không có xe thật
-        Logic: PriorityController sẽ tự động phát hiện và timeout do không xác nhận được xe thật
-        Trong SC4, không spawn xe thật, controller sẽ từ chối false positive nhờ xác nhận kép
-        """
-        def simulate_false_alarm():
-            while self.running and hasattr(self, 'false_alarm_active') and self.false_alarm_active:
-                try:
-                    # Chỉ log - Priority Controller sẽ tự quét và không tìm thấy xe
-                    self.log("⚠️ [SC4-FALSE_ALARM] Chế độ test báo giả - PriorityController đang quét nhưng không phát hiện xe thật.")
-                    
-                    time.sleep(interval)
-                    
-                except Exception as e:
-                    self.log(f"❌ Lỗi trong false alarm simulation: {e}")
-                    break
-        
-        self.false_alarm_active = True
-        threading.Thread(target=simulate_false_alarm, daemon=True).start()
+    # ✅ XÓA HÀM TRÙNG start_false_alarm_simulation (chỉ giữ hàm ở dòng 1548)
     
     def start_default_priority_spawning(self, interval=100):
         """
@@ -1701,7 +1682,9 @@ class SmartTrafficApp(ctk.CTk):
                         spawned_count += 1
                         spawned_vehicle_ids.append(veh_id_j1)
                         pos_info = f"@ {depart_pos}m" if isinstance(depart_pos, (int, float)) else "đầu route"
-                        self.log(f"🚨 Spawn xe ưu tiên từ {dir_name} tại J1 [{veh_id_j1}] - Edge: {edge} ({pos_info})")
+                        self.log(f"🚨 Spawn xe ưu tiên [{scenario_id}] từ {dir_name} tại J1")
+                        self.log(f"   ID: {veh_id_j1}")
+                        self.log(f"   Edge: {edge} ({pos_info})")
                 except Exception as e:
                     # Log lỗi nếu spawn thất bại
                     if "depart" in str(e).lower():
@@ -1748,7 +1731,10 @@ class SmartTrafficApp(ctk.CTk):
                         spawned_count += 1
                         spawned_vehicle_ids.append(veh_id_j4)
                         pos_info = f"@ {depart_pos}m" if isinstance(depart_pos, (int, float)) else "đầu route"
-                        self.log(f"🚨 Spawn xe ưu tiên từ {dir_name} tại J4 [{veh_id_j4}] - Edge: {edge} ({pos_info})")
+                        # Enhanced logging để thấy scenario_id
+                        self.log(f"🚨 Spawn xe ưu tiên [{scenario_id}] từ {dir_name} tại J4")
+                        self.log(f"   ID: {veh_id_j4}")
+                        self.log(f"   Edge: {edge} ({pos_info})")
                 except Exception as e:
                     # Log lỗi nếu spawn thất bại
                     if "depart" in str(e).lower():

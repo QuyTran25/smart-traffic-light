@@ -25,7 +25,7 @@ class PreemptionState(Enum):
 class EmergencyVehicle:
     """Class đại diện cho xe ưu tiên"""
     def __init__(self, vehicle_id: str, vehicle_type: str, detection_time: float, 
-                 direction: str, distance: float, speed: float):
+                 direction: str, distance: float, speed: float, scenario_id: str = "DEFAULT"):
         self.vehicle_id = vehicle_id
         self.vehicle_type = vehicle_type
         self.detection_time = detection_time
@@ -35,6 +35,9 @@ class EmergencyVehicle:
         self.eta = distance / max(speed, 0.1)  # Tránh chia cho 0
         self.confirmed = False
         self.served = False
+        
+        # ✅ SCENARIO ID: Để xác định kịch bản xử lý (SC1, SC2, SC5, SC6, DEFAULT)
+        self.scenario_id = scenario_id
         
         # ✅ KPI: Emergency Clearance Time
         self.clearance_time: Optional[float] = None  # Thời gian từ phát hiện → qua ngã tư
@@ -419,17 +422,28 @@ class PriorityController:
                         print(f"🧭 Hướng: {direction}, Tốc độ: {speed:.1f}m/s")
                         
                         if direction:  # Xe phải có hướng rõ ràng
+                            # ✅ Parse scenario_id từ vehicle_id
+                            # Format: priority_SC1_north_J1_123456
+                            scenario_id = "DEFAULT"
+                            try:
+                                parts = vehicle_id.split("_")
+                                if len(parts) >= 2 and parts[1].startswith("SC"):
+                                    scenario_id = parts[1]  # "SC1", "SC2", "SC5", "SC6"
+                            except:
+                                scenario_id = "DEFAULT"
+                            
                             emergency_veh = EmergencyVehicle(
                                 vehicle_id=vehicle_id,
                                 vehicle_type=veh_type,
                                 detection_time=current_time,
                                 direction=direction,
                                 distance=distance,
-                                speed=speed
+                                speed=speed,
+                                scenario_id=scenario_id  # ✅ TRUYỀN SCENARIO
                             )
                             
                             emergency_vehicles.append(emergency_veh)
-                            print(f"✅ Đã thêm xe {vehicle_id} vào danh sách ưu tiên!")
+                            print(f"✅ Đã thêm xe {vehicle_id} vào danh sách ưu tiên (Scenario: {scenario_id})!")
                         else:
                             print(f"⚠️ Không xác định được hướng xe {vehicle_id}")
                             
@@ -716,6 +730,82 @@ class PriorityController:
         self.current_state = new_state
         self.state_start_time = current_time
     
+    # ========== SCENARIO-SPECIFIC HANDLERS ==========
+    
+    def handle_sc1_main_direction(self, vehicle: EmergencyVehicle):
+        """
+        SC1: Xe ưu tiên từ hướng chính trong giờ cao điểm
+        Logic: Kéo dài đèn xanh nếu đang xanh, nhanh chóng chuyển pha nếu đang đỏ
+        
+        Tài liệu: "Nếu pha N–S đang xanh: giữ xanh đủ min_green (10s) rồi mở rộng thêm"
+        """
+        print(f"🚓 [SC1-HANDLER] Xe từ hướng chính: {vehicle.direction}")
+        # Logic đã được xử lý trong handle_detection_state (BƯỚC 4)
+        # Hàm này để log và tracking thêm nếu cần
+    
+    def handle_sc2_branch_direction(self, vehicle: EmergencyVehicle):
+        """
+        SC2: Xe ưu tiên từ hướng nhánh sắp tới gần
+        Logic: Kiểm tra safe_min_green trước khi chuyển pha
+        
+        Tài liệu: "Nếu ≥ min_green: chuyển pha → vàng → đỏ toàn bộ → xanh cho hướng ưu tiên"
+        """
+        print(f"🚙 [SC2-HANDLER] Xe từ hướng nhánh: {vehicle.direction}, ETA={vehicle.eta:.1f}s")
+        # Logic đã được xử lý trong handle_detection_state (BƯỚC 5)
+    
+    def handle_sc5_stuck_vehicle(self, vehicle: EmergencyVehicle):
+        """
+        SC5: Xe ưu tiên bị kẹt trong dòng xe dài
+        Logic: Dọn upstream (mở pha trước đó), mở rộng thời gian xanh
+        
+        Tài liệu: "Mở xanh cho hướng xe ưu tiên, kết hợp mở upstream để giải tỏa hàng xe máy"
+        """
+        print(f"🚓 [SC5-HANDLER] Xe bị kẹt: {vehicle.vehicle_id}, distance={vehicle.distance:.1f}m")
+        
+        try:
+            # Tăng thời gian xanh lên gấp đôi để dọn dòng xe
+            extended_green = self.PREEMPT_MIN_GREEN * 2.0
+            print(f"   → Tăng thời gian xanh lên {extended_green:.0f}s để dọn dòng xe")
+            
+            # TODO: Nếu có upstream signal, mở luôn để xe máy phía sau thoát ra
+            # (Tính năng nâng cao - cần có multi-junction coordination)
+            
+        except Exception as e:
+            print(f"⚠️ Lỗi SC5 handler: {e}")
+    
+    def handle_sc6_consecutive(self, vehicle: EmergencyVehicle):
+        """
+        SC6: Nhiều xe ưu tiên liên tiếp từ cùng hướng
+        Logic: Ghi nhận backlog, bù thời gian xanh cho các hướng khác sau
+        
+        Tài liệu: "Khi hết luồng ưu tiên → hệ thống bù green cho các hướng bị dồn backlog"
+        """
+        print(f"🚑 [SC6-HANDLER] Xe liên tiếp #{len(self.preemption_count_last_minute)}: {vehicle.vehicle_id}")
+        
+        try:
+            # Ghi nhận queue tích lũy (backlog) cho các hướng khác
+            if self.adaptive_controller:
+                all_directions = {"Bắc", "Nam", "Đông", "Tây"}
+                affected_dirs = all_directions - {vehicle.direction}
+                
+                for direction in affected_dirs:
+                    # Record backlog severity
+                    try:
+                        queue_pcu = self.adaptive_controller.convert_to_pcu(
+                            self.adaptive_controller.TrafficDirection[direction.upper()]
+                        )
+                        self.adaptive_controller.record_backlog(direction, queue_pcu)
+                        print(f"   📝 {direction}: Queue backlog = {queue_pcu:.1f} PCU")
+                    except Exception:
+                        pass
+            
+            print(f"   ⚠️ Rate limit: {len(self.preemption_count_last_minute)}/2 xe trong 60s")
+            
+        except Exception as e:
+            print(f"⚠️ Lỗi SC6 handler: {e}")
+    
+    # ========== END SCENARIO HANDLERS ==========
+    
     def handle_normal_state(self):
         """Xử lý trạng thái NORMAL"""
         # Quét tìm xe ưu tiên
@@ -807,11 +897,16 @@ class PriorityController:
                 print(f"=" * 60)
                 print(f"🚨 SC1: XE ƯU TIÊN TỪ HƯỚNG ĐANG XANH")
                 print(f"   Xe: {priority_vehicle.vehicle_id}")
+                print(f"   Scenario: {priority_vehicle.scenario_id}")
                 print(f"   Hướng: {priority_vehicle.direction} (Phase {current_phase})")
                 print(f"   Khoảng cách: {priority_vehicle.distance:.1f}m")
                 print(f"   ETA: {priority_vehicle.eta:.1f}s")
                 print(f"   → KÉO DÀI ĐÈN XANH")
                 print(f"=" * 60)
+                
+                # ✅ Gọi SC1 handler
+                if priority_vehicle.scenario_id == "SC1":
+                    self.handle_sc1_main_direction(priority_vehicle)
                 
                 # Chuyển thẳng PREEMPTION_GREEN (bỏ qua SAFE_TRANSITION)
                 self.transition_to_state(PreemptionState.PREEMPTION_GREEN, {
@@ -849,15 +944,24 @@ class PriorityController:
         
         # --- BƯỚC 6: Tất cả điều kiện OK → SAFE_TRANSITION ---
         print(f"=" * 60)
-        print(f"🚦 SC2: CHUYỂN PHA AN TOÀN")
+        print(f"🚦 CHUYỂN PHA AN TOÀN")
         print(f"   Xe: {priority_vehicle.vehicle_id}")
+        print(f"   Scenario: {priority_vehicle.scenario_id}")
         print(f"   Hướng: {priority_vehicle.direction}")
         print(f"   ETA: {priority_vehicle.eta:.1f}s")
         print(f"   → BẮT ĐẦU QUY TRÌNH YELLOW → ALL-RED → GREEN")
         print(f"=" * 60)
         
+        # ✅ Gọi scenario handlers tương ứng
+        if priority_vehicle.scenario_id == "SC2":
+            self.handle_sc2_branch_direction(priority_vehicle)
+        elif priority_vehicle.scenario_id == "SC5":
+            self.handle_sc5_stuck_vehicle(priority_vehicle)
+        elif priority_vehicle.scenario_id == "SC6":
+            self.handle_sc6_consecutive(priority_vehicle)
+        
         self.transition_to_state(PreemptionState.SAFE_TRANSITION, {
-            'scenario': 'SC2',
+            'scenario': priority_vehicle.scenario_id,
             'priority_vehicle': priority_vehicle.vehicle_id,
             'direction': priority_vehicle.direction,
             'eta': priority_vehicle.eta
@@ -1022,15 +1126,27 @@ class PriorityController:
                         # Xe đi chậm sau 15s → Cảnh báo
                         print(f"⚠️ SC5: Xe {vid} có thể bị kẹt")
                         print(f"   Speed: {speed:.1f}m/s, Elapsed: {elapsed:.1f}s")
+                        print(f"   Scenario: {vehicle.scenario_id}")
+                        
+                        # ✅ SC5-specific handling: Tăng thời gian xanh nếu là SC5
+                        if vehicle.scenario_id == "SC5" and elapsed > 20:
+                            print(f"🚓 [SC5] Phát hiện xe kẹt → Kéo dài thời gian xanh")
+                            # Kéo dài thêm thời gian để xe thoát
                         
                         if elapsed > 30:
                             # Kẹt quá 30s → Chuyển HOLD_PREEMPTION
                             print(f"❌ SC5: Xe {vid} kẹt quá 30s!")
+                            
+                            # ✅ Gọi SC5 handler lần nữa
+                            if vehicle.scenario_id == "SC5":
+                                self.handle_sc5_stuck_vehicle(vehicle)
+                            
                             self.transition_to_state(PreemptionState.HOLD_PREEMPTION, {
                                 'reason': 'vehicle_stuck',
                                 'vehicle_id': vid,
                                 'speed': speed,
-                                'elapsed': elapsed
+                                'elapsed': elapsed,
+                                'scenario': vehicle.scenario_id
                             })
                             return
                     

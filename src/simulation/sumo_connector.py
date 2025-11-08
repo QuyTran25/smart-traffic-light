@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import traci
 from sumolib import checkBinary
 import sys
@@ -8,7 +9,8 @@ def khoi_dong_sumo(config_path, gui=True):
     try:
         # Kiểm tra file cấu hình có tồn tại không
         if not os.path.exists(config_path):
-            raise FileNotFoundError(f"❌ Không tìm thấy file cấu hình: {config_path}")
+            print(f"[ERROR] Khong tim thay file cau hinh: {config_path}")
+            return False
         
         sumo_binary = checkBinary('sumo-gui' if gui else 'sumo')
         
@@ -18,23 +20,26 @@ def khoi_dong_sumo(config_path, gui=True):
             "-c", config_path,
             "--waiting-time-memory", "10000",
             "--time-to-teleport", "300",
-            "--no-step-log", "true"
+            "--no-step-log", "true",
+            "--start", "true"  # Auto-start simulation
         ]
         
         if not gui:
             sumo_cmd.extend(["--no-warnings", "true"])
         
         traci.start(sumo_cmd)
-        print(f"✅ SUMO đã được khởi động với cấu hình: {config_path}")
+        print(f"[OK] SUMO da duoc khoi dong voi cau hinh: {config_path}")
         
         # Kiểm tra số lượng xe trong mô phỏng
         num_vehicles = traci.simulation.getMinExpectedNumber()
-        print(f"📊 Số xe dự kiến trong mô phỏng: {num_vehicles}")
+        print(f"[INFO] So xe du kien trong mo phong: {num_vehicles}")
         
         return True
         
     except Exception as e:
-        print(f"❌ Lỗi khi khởi động SUMO: {str(e)}")
+        print(f"[ERROR] Loi khi khoi dong SUMO: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def kiem_tra_mo_phong_con_chay():
@@ -56,9 +61,9 @@ def dung_sumo():
     try:
         if traci.isLoaded():
             traci.close()
-            print("🛑 Đã dừng mô phỏng SUMO.")
+            print("[STOP] Da dung mo phong SUMO.")
     except Exception as e:
-        print(f"⚠️ Lỗi khi dừng SUMO: {str(e)}")
+        print(f"[WARNING] Loi khi dung SUMO: {str(e)}")
 
 def lay_thong_tin_mo_phong():
     """Lấy thông tin hiện tại của mô phỏng."""
@@ -75,14 +80,14 @@ def lay_thong_tin_mo_phong():
             'xe_da_den': arrived_vehicles
         }
     except Exception as e:
-        print(f"❌ Lỗi khi lấy thông tin mô phỏng: {str(e)}")
+        print(f"[ERROR] Loi khi lay thong tin mo phong: {str(e)}")
         return None
 
 def lay_thong_tin_den_giao_thong(tls_id):
     """Lấy thông tin hiện tại của đèn giao thông."""
     try:
         if not traci.isLoaded():
-            print("⚠️ SUMO chưa được khởi động.")
+            print("[WARNING] SUMO chua duoc khoi dong.")
             return None
         
         current_phase = traci.trafficlight.getPhase(tls_id)
@@ -95,35 +100,35 @@ def lay_thong_tin_den_giao_thong(tls_id):
             'thoi_gian_chuyen_tiep': next_switch
         }
     except Exception as e:
-        print(f"❌ Lỗi khi lấy thông tin đèn giao thông: {str(e)}")
+        print(f"[ERROR] Loi khi lay thong tin den giao thong: {str(e)}")
         return None
 
 def dat_phase_den_giao_thong(tls_id, phase_index):
     """Đặt phase cho đèn giao thông."""
     try:
         if not traci.isLoaded():
-            print("⚠️ SUMO chưa được khởi động.")
+            print("[WARNING] SUMO chua duoc khoi dong.")
             return False
         
         traci.trafficlight.setPhase(tls_id, phase_index)
-        print(f"✅ Đã đặt phase {phase_index} cho đèn giao thông {tls_id}")
+        print(f"[OK] Da dat phase {phase_index} cho den giao thong {tls_id}")
         return True
     except Exception as e:
-        print(f"❌ Lỗi khi đặt phase: {str(e)}")
+        print(f"[ERROR] Loi khi dat phase: {str(e)}")
         return False
 
 def dat_thoi_gian_phase(tls_id, phase_index, duration):
     """Đặt thời gian cho một phase cụ thể của đèn giao thông."""
     try:
         if not traci.isLoaded():
-            print("⚠️ SUMO chưa được khởi động.")
+            print("[WARNING] SUMO chua duoc khoi dong.")
             return False
         
         traci.trafficlight.setPhaseDuration(tls_id, phase_index, duration)
-        print(f"✅ Đã đặt thời gian {duration}s cho phase {phase_index} của đèn {tls_id}")
+        print(f"[OK] Da dat thoi gian {duration}s cho phase {phase_index} cua den {tls_id}")
         return True
     except Exception as e:
-        print(f"❌ Lỗi khi đặt thời gian phase: {str(e)}")
+        print(f"[ERROR] Loi khi dat thoi gian phase: {str(e)}")
         return False
 
 def dieu_chinh_den_giao_thong(tls_id, phase_durations):
@@ -140,14 +145,14 @@ def lay_danh_sach_den_giao_thong():
     """Lấy danh sách tất cả đèn giao thông trong mô phỏng."""
     try:
         if not traci.isLoaded():
-            print("⚠️ SUMO chưa được khởi động.")
+            print("[WARNING] SUMO chua duoc khoi dong.")
             return []
         
         tls_ids = traci.trafficlight.getIDList()
-        print(f"📋 Tìm thấy {len(tls_ids)} đèn giao thông: {tls_ids}")
+        print(f"[INFO] Tim thay {len(tls_ids)} den giao thong: {tls_ids}")
         return tls_ids
     except Exception as e:
-        print(f"❌ Lỗi khi lấy danh sách đèn giao thông: {str(e)}")
+        print(f"[ERROR] Loi khi lay danh sach den giao thong: {str(e)}")
         return []
 
 def dieu_chinh_nhieu_den(tls_ids, phase_durations):
@@ -160,18 +165,18 @@ def dieu_chinh_nhieu_den(tls_ids, phase_durations):
     """
     try:
         if not traci.isLoaded():
-            print("⚠️ SUMO chưa được khởi động.")
+            print("[WARNING] SUMO chua duoc khoi dong.")
             return False
         
         for tls_id in tls_ids:
-            print(f"🔄 Đang điều chỉnh đèn {tls_id}...")
+            print(f"[INFO] Dang dieu chinh den {tls_id}...")
             if not tao_chuong_trinh_den(tls_id, phase_durations):
                 return False
         
-        print(f"✅ Hoàn thành điều chỉnh {len(tls_ids)} đèn giao thông")
+        print(f"[OK] Hoan thanh dieu chinh {len(tls_ids)} den giao thong")
         return True
     except Exception as e:
-        print(f"❌ Lỗi khi điều chỉnh nhiều đèn giao thông: {str(e)}")
+        print(f"[ERROR] Loi khi dieu chinh nhieu den giao thong: {str(e)}")
         return False
 
 def dieu_chinh_tat_ca_den(phase_durations):
@@ -208,17 +213,17 @@ def tao_chuong_trinh_fixed_time(tls_ids, phase_durations):
     """
     try:
         if not traci.isLoaded():
-            print("⚠️ SUMO chưa được khởi động.")
+            print("[WARNING] SUMO chua duoc khoi dong.")
             return False
         
         green_time = phase_durations.get('xanh_chung', 30)
         yellow_time = phase_durations.get('vang_chung', 3)
         all_red_time = phase_durations.get('do_toan_phan', 2)
         
-        print(f"\n🚦 Tạo chương trình Fixed-Time:")
-        print(f"   ├─ Xanh: {green_time}s")
-        print(f"   ├─ Vàng: {yellow_time}s")
-        print(f"   └─ All-Red: {all_red_time}s")
+        print(f"\n[SETUP] Tao chuong trinh Fixed-Time:")
+        print(f"   - Xanh: {green_time}s")
+        print(f"   - Vang: {yellow_time}s")
+        print(f"   - All-Red: {all_red_time}s")
         
         success_count = 0
         
@@ -265,27 +270,27 @@ def tao_chuong_trinh_fixed_time(tls_ids, phase_durations):
                     # Đặt phase về 0 để bắt đầu lại chu kỳ
                     traci.trafficlight.setPhase(tls_id, 0)
                     
-                    print(f"✅ {tls_id}: Đã cập nhật Fixed-Time (Chu kỳ: {(green_time + yellow_time + all_red_time) * 2}s)")
+                    print(f"[OK] {tls_id}: Da cap nhat Fixed-Time (Chu ky: {(green_time + yellow_time + all_red_time) * 2}s)")
                     success_count += 1
                     
                 else:
-                    print(f"⚠️ {tls_id} chỉ có {len(current_logic.phases)} phases (cần ít nhất 6), bỏ qua")
+                    print(f"[WARNING] {tls_id} chi co {len(current_logic.phases)} phases (can it nhat 6), bo qua")
                     
             except Exception as e:
-                print(f"❌ Lỗi khi cập nhật {tls_id}: {e}")
+                print(f"[ERROR] Loi khi cap nhat {tls_id}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
         
         if success_count > 0:
-            print(f"✅ Hoàn thành: {success_count}/{len(tls_ids)} đèn giao thông đã chuyển sang Fixed-Time\n")
+            print(f"[OK] Hoan thanh: {success_count}/{len(tls_ids)} den giao thong da chuyen sang Fixed-Time\n")
             return True
         else:
-            print(f"❌ Không thể cấu hình Fixed-Time cho bất kỳ đèn nào\n")
+            print(f"[ERROR] Khong the cau hinh Fixed-Time cho bat ky den nao\n")
             return False
         
     except Exception as e:
-        print(f"❌ Lỗi khi tạo chương trình Fixed-Time: {e}")
+        print(f"[ERROR] Loi khi tao chuong trinh Fixed-Time: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -314,13 +319,13 @@ def tao_chuong_trinh_den(tls_id, phase_durations):
         for logical_phase, actual_phase in phase_mapping.items():
             if logical_phase in phase_durations:
                 current_logic.phases[actual_phase].duration = phase_durations[logical_phase]
-                print(f"📝 Phase chính {logical_phase} (actual {actual_phase}): duration = {phase_durations[logical_phase]}s")
+                print(f"[INFO] Phase chinh {logical_phase} (actual {actual_phase}): duration = {phase_durations[logical_phase]}s")
         
         # Đặt lại logic đã sửa
         traci.trafficlight.setCompleteRedYellowGreenDefinition(tls_id, current_logic)
-        print(f"✅ Đã cập nhật chương trình cho đèn {tls_id}")
+        print(f"[OK] Da cap nhat chuong trinh cho den {tls_id}")
         return True
         
     except Exception as e:
-        print(f"❌ Lỗi khi tạo chương trình đèn: {str(e)}")
+        print(f"[ERROR] Loi khi tao chuong trinh den: {str(e)}")
         return False
