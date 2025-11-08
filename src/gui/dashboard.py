@@ -46,7 +46,7 @@ class SmartTrafficApp(ctk.CTk):
         self.running = False
         self.paused = False
         self.resetting = False
-        self.mode = "Mặc định"  # or "Tự động"
+        self.mode = "Mặc định"  # or "Thông minh"
         
         # scenario spawning
         self.scenario_spawning = False
@@ -121,9 +121,10 @@ class SmartTrafficApp(ctk.CTk):
             "J4": {"Bắc": 0, "Nam": 0, "Đông": 0, "Tây": 0}
         }
         self.has_priority_vehicles = False
-
+        
         # Build UI
         self.create_layout()
+        self.after(100, lambda: self.change_mode("Mặc định")) 
 
     # ====================== UI Layout ======================
     def create_layout(self):
@@ -185,7 +186,7 @@ class SmartTrafficApp(ctk.CTk):
         self.mode_option = ctk.StringVar(value="Mặc định")
         mode_segment = ctk.CTkSegmentedButton(
             left_controls,
-            values=["Mặc định", "Tự động"],
+            values=["Mặc định", "Thông minh"],
             variable=self.mode_option,
             font=("Segoe UI", 11, "bold"),
             command=self.change_mode,
@@ -244,17 +245,24 @@ class SmartTrafficApp(ctk.CTk):
             text_color="#334155"
         ).pack(side="left", padx=(0, 8))
 
+        # Danh sách kịch bản đầy đủ (dùng cho Mặc định)
+        self.all_scenarios = [
+            "Mặc định",
+            "SC1 - Xe ưu tiên từ hướng chính trong giờ cao điểm",
+            "SC2 - Xe ưu tiên từ hướng nhánh (ít xe) sắp tới gần",
+            "SC3 - Nhiều xe ưu tiên từ 2 hướng đối diện",
+            "SC4 - Báo giả",
+            "SC5 - Xe ưu tiên bị kẹt trong dòng xe dài",
+            "SC6 - Nhiều xe ưu tiên liên tiếp"
+        ]
+
+        # Danh sách chỉ SC1–SC6 (dùng cho Tự động)
+        self.smart_scenarios = self.all_scenarios[1:]  # Bỏ "Mặc định"
+
+        # Tạo OptionMenu
         self.case_box = ctk.CTkOptionMenu(
             scenario_frame,
-            values=[
-                "Mặc định",
-                "SC1 - Xe ưu tiên từ hướng chính trong giờ cao điểm",
-                "SC2 - Xe ưu tiên từ hướng nhánh (ít xe) sắp tới gần",
-                "SC3 - Nhiều xe ưu tiên từ 2 hướng đối diện",
-                "SC4 - Báo giả",
-                "SC5 - Xe ưu tiên bị kẹt trong dòng xe dài",
-                "SC6 - Nhiều xe ưu tiên liên tiếp"
-            ],
+            values=self.all_scenarios,  # Ban đầu là đầy đủ
             dropdown_font=("Segoe UI", 10),
             fg_color="#cbd5e1",
             button_color="#0ea5e9",
@@ -269,7 +277,6 @@ class SmartTrafficApp(ctk.CTk):
         )
         self.case_box.pack(side="left")
         self.case_box.set("Mặc định")
-
 
         # Timing inputs (make as class attributes so change_mode can pack/forget them)
         self.timing_bar = ctk.CTkFrame(self.scrollable_frame, fg_color="#ffffff", corner_radius=0)
@@ -577,21 +584,23 @@ class SmartTrafficApp(ctk.CTk):
     # ============ Mode switching ============
     def change_mode(self, value):
         self.mode = value
-        self.log(f"✓ Chế độ: {value}")
+        self.log(f"Chế độ: {value}")
         self.mode_status_label.configure(text=f"Chế độ: {value}")
-        
-        # If switching from Adaptive -> Mặc định, stop controllers
+
         if value == "Mặc định":
             self.stop_all_controllers()
             self.timing_bar.pack(after=self.control_bar_main, fill="x", pady=(1, 0))
             
-            # Nếu SUMO đang chạy, áp dụng ngay fixed-time program
+            # HIỆN TẤT CẢ KỊCH BẢN (Mặc định + SC1-6)
+            self.case_box.configure(values=self.all_scenarios)
+            current = self.case_box.get()
+            if current not in self.all_scenarios:
+                self.case_box.set("Mặc định")
+
             if self.running:
                 try:
                     import traci
                     traci.simulation.getTime()
-                    
-                    # Lấy thời gian hiện tại từ entry fields
                     try:
                         green = int(self.green_entry.get())
                         yellow = int(self.yellow_entry.get())
@@ -600,25 +609,27 @@ class SmartTrafficApp(ctk.CTk):
                         green = self.green_time
                         yellow = self.yellow_time
                         red = self.red_time
-                    
-                    phase_durations = {
-                        'xanh_chung': green,
-                        'vang_chung': yellow,
-                        'do_toan_phan': red
-                    }
-                    
+                    phase_durations = {'xanh_chung': green, 'vang_chung': yellow, 'do_toan_phan': red}
                     dieu_chinh_tat_ca_den(phase_durations)
-                    self.log(f"✅ Đã chuyển sang chế độ Fixed-Time (Xanh {green}s, Vàng {yellow}s, All-Red {red}s)")
-                    
+                    self.log(f"Đã chuyển sang chế độ Fixed-Time (Xanh {green}s, Vàng {yellow}s, All-Red {red}s)")
                 except Exception as e:
-                    self.log(f"⚠ Không thể áp dụng Fixed-Time: {e}")
-        
-        # If switching to Adaptive, hide timing and start controllers if running
-        if value == "Tự động":
+                    self.log(f"Không thể áp dụng Fixed-Time: {e}")
+
+        elif value == "Thông minh":  # ← Dùng "Thông minh", không phải "Tự động"
             self.timing_bar.pack_forget()
+            
+            # CHỈ HIỆN SC1 → SC6, ẨN "Mặc định"
+            self.case_box.configure(values=self.smart_scenarios)
+            current = self.case_box.get()
+            
+            # Nếu đang chọn "Mặc định" → tự động chuyển về SC1
+            if current == "Mặc định" or current not in self.smart_scenarios:
+                self.case_box.set(self.smart_scenarios[0])  # SC1
+            # Nếu đang chọn SCx hợp lệ → giữ nguyên
+
             if self.running:
                 self.start_controllers_if_needed()
-                self.log("✅ Đã kích hoạt Adaptive Controllers")
+                self.log("Đã kích hoạt Adaptive Controllers")
 
     # ============ Start / Pause / Stop ============
     def start_sim(self):
@@ -954,6 +965,9 @@ class SmartTrafficApp(ctk.CTk):
 
         self.mode_option.set("Mặc định")
         self.mode_status_label.configure(text="Chế độ: Mặc định")
+
+        self.case_box.configure(values=self.all_scenarios)
+        self.case_box.set("Mặc định")
 
         self.green_entry.delete(0, 'end'); self.green_entry.insert(0, "30")
         self.yellow_entry.delete(0, 'end'); self.yellow_entry.insert(0, "3")
