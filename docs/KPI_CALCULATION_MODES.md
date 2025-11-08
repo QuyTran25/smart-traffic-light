@@ -481,23 +481,32 @@ def calculate_fairness():
 
 **Định nghĩa**: Thời gian từ khi phát hiện xe ưu tiên đến khi xe qua ngã tư
 
-#### ✅ **ÁP DỤNG CHO CẢ 2 CHẾ ĐỘ** (với cách hoạt động khác nhau)
+#### 🔄 **HIỂN THỊ KHÁC NHAU GIỮA 2 CHẾ ĐỘ**
 
 ```
-✅ CHẾ ĐỘ MẶC ĐỊNH: KPI ĐƯỢC TÍNH (Monitoring Mode)
-   - PriorityController chạy ở chế độ THEO DÕI
-   - Phát hiện xe ưu tiên, theo dõi và tính clearance time
-   - KHÔNG can thiệp đèn giao thông (đèn vẫn chạy Fixed-Time)
-   - Mục đích: So sánh baseline performance (xe ưu tiên không được ưu tiên)
+❌ CHẾ ĐỘ MẶC ĐỊNH: KHÔNG HIỂN THỊ KPI 8
+   - Vị trí KPI đầu tiên hiển thị: "Tổng xe" 🚗 (xe)
+   - Giá trị: Tổng số xe hiện tại trong simulation
+   - Nguồn dữ liệu: vehicle_counter.get_current_counts()
+   - Lý do: Chế độ Fixed-Time không ưu tiên xe khẩn cấp
+            → Không cần đo clearance time (không có ý nghĩa so sánh)
 
-✅ CHẾ ĐỘ TỰ ĐỘNG: KPI ĐƯỢC TÍNH (Full Control Mode)
-   - PriorityController chạy ở chế độ ĐIỀU KHIỂN ĐẦY ĐỦ
-   - Phát hiện xe ưu tiên, can thiệp đèn để ưu tiên
-   - Áp dụng 6 kịch bản SC1-SC6
-   - Mục đích: Đo lường hiệu quả của hệ thống ưu tiên xe khẩn cấp
+✅ CHẾ ĐỘ TỰ ĐỘNG: HIỂN THỊ KPI 8
+   - Vị trí KPI đầu tiên hiển thị: "TG giải phóng xe UT" 🚨 (s)
+   - Giá trị: Thời gian giải phóng xe ưu tiên trung bình
+   - Nguồn dữ liệu: priority_controller.clearance_times[]
+   - Lý do: Đo lường hiệu quả của hệ thống ưu tiên xe khẩn cấp
+            → Chứng minh Adaptive + Priority Control hoạt động tốt
 ```
 
-#### ✅ Công thức (CẢ 2 CHẾ ĐỘ):
+#### 📊 Quy tắc UI:
+
+| Chế độ | KPI đầu tiên | Icon | Đơn vị | Giá trị hiển thị |
+|--------|--------------|------|--------|------------------|
+| **Mặc định** | Tổng xe | 🚗 | xe | `sum(vehicle_counts.values())` |
+| **Tự động** | TG giải phóng xe UT | 🚨 | s | `average(clearance_times)` |
+
+#### ✅ Công thức (CHỈ ÁP DỤNG CHẾ ĐỘ TỰ ĐỘNG):
 
 ```
 Emergency_Clearance_Time = T_crossed - T_detected
@@ -513,25 +522,28 @@ Trong đó:
 
 Clearance_Time = T_crossed - T_detected (giây)
 
-📊 HIỂN THỊ REALTIME:
-- Khi xe đang được theo dõi (confirmed_vehicles):
+📊 HIỂN THỊ TRONG CHẾ ĐỘ TỰ ĐỘNG:
+- Khi có xe đang được theo dõi (confirmed_vehicles):
   KPI 8 = Elapsed Time (current_time - detection_time) ⏱️
-  → Cập nhật liên tục mỗi giây (nhảy realtime)
   
-- Khi xe đã qua ngã tư (clearance_times):
+- Khi không có xe đang theo dõi:
   KPI 8 = Average Clearance Time 📊
-  → Giá trị cố định (trung bình của tất cả xe đã qua)
+  → Trung bình của tất cả xe đã qua (giá trị ổn định)
+  
+💡 CHÚ Ý: Trong chế độ Mặc định, vị trí này hiển thị "Tổng xe" thay vì KPI 8
 ```
 
 #### 🔄 So sánh giữa 2 chế độ:
 
 | Khía cạnh | Chế độ Mặc định | Chế độ Tự động |
 |-----------|----------------|----------------|
-| **PriorityController** | Monitoring Only | Full Control |
-| **Can thiệp đèn** | ❌ Không | ✅ Có (SC1-SC6) |
-| **Tính KPI 8** | ✅ Có | ✅ Có |
-| **Clearance Time mong đợi** | 15-30s (không ưu tiên) | 8-15s (có ưu tiên đèn xanh) |
-| **Mục đích** | Baseline comparison | Performance evaluation |
+| **Hiển thị KPI đầu tiên** | "Tổng xe" 🚗 | "TG giải phóng xe UT" 🚨 |
+| **Giá trị hiển thị** | Số xe hiện tại | Clearance time (giây) |
+| **PriorityController** | ❌ Không chạy | ✅ Full Control (SC1-SC6) |
+| **Can thiệp đèn** | ❌ Không | ✅ Có (đèn xanh ưu tiên) |
+| **Tính KPI 8** | ❌ Không tính | ✅ Có tính và hiển thị |
+| **Clearance Time** | N/A (không theo dõi) | 8-15s (có ưu tiên đèn) |
+| **Mục đích** | Hiển thị tổng quan xe | Đo hiệu quả hệ thống ưu tiên |
 
 #### 📊 Quy trình tính toán chi tiết:
 

@@ -124,6 +124,9 @@ class SmartTrafficApp(ctk.CTk):
 
         # Build UI
         self.create_layout()
+        
+        # Cập nhật hiển thị KPI đầu tiên theo mode ban đầu
+        self.update_first_kpi_display()
 
     # ====================== UI Layout ======================
     def create_layout(self):
@@ -376,6 +379,7 @@ class SmartTrafficApp(ctk.CTk):
         kpi_grid = ctk.CTkFrame(section, fg_color="transparent")
         kpi_grid.pack(fill="x", padx=8, pady=(0, 8))
         self.global_kpi_cards = {}
+        self.first_kpi_widgets = {}  # Lưu widgets của KPI đầu để thay đổi theo mode
         kpi_data = [
             ("Tổng xe", "—", "xe", "#dbeafe", "#1e3a8a", "🚗"),
             ("Độ trễ TB", "—", "s/xe", "#fef3c7", "#78350f", "⏱"),
@@ -392,23 +396,50 @@ class SmartTrafficApp(ctk.CTk):
             card = ctk.CTkFrame(kpi_grid, fg_color=bg_color, corner_radius=6, width=110, height=65)
             card.grid(row=row, column=col, padx=3, pady=3, sticky="ew")
             card.grid_propagate(False)
-            ctk.CTkLabel(card, text=icon, font=("Segoe UI", 14), text_color=text_color).pack(side="left",
-                                                                                             padx=(6, 4), pady=4)
+            icon_label = ctk.CTkLabel(card, text=icon, font=("Segoe UI", 14), text_color=text_color)
+            icon_label.pack(side="left", padx=(6, 4), pady=4)
             content = ctk.CTkFrame(card, fg_color="transparent")
             content.pack(side="left", fill="both", expand=True, pady=4, padx=(0, 4))
-            ctk.CTkLabel(content, text=name, font=("Segoe UI", 8, "bold"), text_color="#0f172a", anchor="w").pack(
-                anchor="w")
+            name_label = ctk.CTkLabel(content, text=name, font=("Segoe UI", 8, "bold"), text_color="#0f172a", anchor="w")
+            name_label.pack(anchor="w")
             value_frame = ctk.CTkFrame(content, fg_color="transparent")
             value_frame.pack(anchor="w", fill="x")
             val_label = ctk.CTkLabel(value_frame, text=value, font=("Segoe UI", 15, "bold"),
                                      text_color=text_color, anchor="w")
             val_label.pack(side="left")
+            unit_label = None
             if unit:
-                ctk.CTkLabel(value_frame, text=f" {unit}", font=("Segoe UI", 8), text_color="#475569", anchor="w").pack(
-                    side="left", pady=(4, 0))
+                unit_label = ctk.CTkLabel(value_frame, text=f" {unit}", font=("Segoe UI", 8), text_color="#475569", anchor="w")
+                unit_label.pack(side="left", pady=(4, 0))
             self.global_kpi_cards[name] = val_label
+            
+            # Lưu widgets của KPI đầu tiên
+            if idx == 0:
+                self.first_kpi_widgets = {
+                    "icon": icon_label,
+                    "name": name_label,
+                    "unit": unit_label
+                }
         for i in range(4):  # Changed from 3 to 4 columns
             kpi_grid.grid_columnconfigure(i, weight=1)
+
+    def update_first_kpi_display(self):
+        """Cập nhật hiển thị KPI đầu tiên theo chế độ"""
+        if not hasattr(self, 'first_kpi_widgets'):
+            return
+            
+        if self.mode == "Mặc định":
+            # Chế độ Mặc định: Hiển thị "Tổng xe" 🚗
+            self.first_kpi_widgets["icon"].configure(text="🚗")
+            self.first_kpi_widgets["name"].configure(text="Tổng xe")
+            if self.first_kpi_widgets["unit"]:
+                self.first_kpi_widgets["unit"].configure(text=" xe")
+        else:
+            # Chế độ Tự động: Hiển thị "TG giải phóng xe UT" 🚨
+            self.first_kpi_widgets["icon"].configure(text="🚨")
+            self.first_kpi_widgets["name"].configure(text="TG giải phóng xe UT")
+            if self.first_kpi_widgets["unit"]:
+                self.first_kpi_widgets["unit"].configure(text=" s")
 
     def create_priority_vehicle_section(self, parent):
         """Tạo panel hiển thị xe ưu tiên động"""
@@ -582,6 +613,9 @@ class SmartTrafficApp(ctk.CTk):
         self.mode = value
         self.log(f"Chế độ: {value}")
         self.mode_status_label.configure(text=f"Chế độ: {value}")
+        
+        # Cập nhật hiển thị KPI đầu tiên
+        self.update_first_kpi_display()
 
         # === CHUYỂN SANG MẶC ĐỊNH ===
         if value == "Mặc định":
@@ -2013,9 +2047,31 @@ class SmartTrafficApp(ctk.CTk):
             else:
                 fairness = 100.0
 
+            # === TÍNH KPI ĐẦU TIÊN (Động theo mode) ===
+            first_kpi_value = 0
+            
+            if self.mode == "Mặc định":
+                # Chế độ Mặc định: Tổng xe
+                first_kpi_value = total_vehicles
+            else:
+                # Chế độ Tự động: Thời gian giải phóng xe ưu tiên (TG giải phóng xe UT)
+                if hasattr(self, 'priority_controllers') and self.priority_controllers:
+                    clearance_times = []
+                    for junction_id, priority_ctrl in self.priority_controllers.items():
+                        if hasattr(priority_ctrl, 'clearance_times') and priority_ctrl.clearance_times:
+                            clearance_times.extend(priority_ctrl.clearance_times)
+                    
+                    # Tính trung bình thời gian giải phóng
+                    if clearance_times:
+                        first_kpi_value = round(sum(clearance_times) / len(clearance_times), 1)
+                    else:
+                        first_kpi_value = 0.0
+                else:
+                    first_kpi_value = 0.0
+
             # === CẬP NHẬT GLOBAL KPI ===
             self.global_kpi_data = {
-                "Tổng xe": total_vehicles,
+                "Tổng xe": first_kpi_value,  # Giá trị động theo mode
                 "Độ trễ TB": avg_delay,
                 "Lưu lượng": throughput,
                 "Hàng chờ TB": avg_queue_pcu,
