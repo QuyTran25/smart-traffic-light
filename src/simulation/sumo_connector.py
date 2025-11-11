@@ -20,8 +20,7 @@ def khoi_dong_sumo(config_path, gui=True):
             "-c", config_path,
             "--waiting-time-memory", "10000",
             "--time-to-teleport", "300",
-            "--no-step-log", "true",
-            "--start", "true"  # Auto-start simulation
+            "--no-step-log", "true"
         ]
         
         if not gui:
