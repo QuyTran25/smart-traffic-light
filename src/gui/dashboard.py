@@ -48,6 +48,9 @@ class SmartTrafficApp(ctk.CTk):
         self.resetting = False
         self.mode = "Mặc định"  # or "Tự động"
         
+        # ✅ TÍCH LŨY số xe arrived (fix lỗi throughput về 0)
+        self.total_arrived_vehicles = 0
+        
         # scenario spawning
         self.scenario_spawning = False
         self.scenario_thread = None
@@ -982,6 +985,9 @@ class SmartTrafficApp(ctk.CTk):
             "Chu kỳ TB": 0,
             "Công bằng": 0.0
         }
+        
+        # ✅ Reset tích lũy arrived
+        self.total_arrived_vehicles = 0
 
         # Reset intersection data
         self.intersection_data = {
@@ -1818,7 +1824,12 @@ class SmartTrafficApp(ctk.CTk):
             current_time = traci.simulation.getTime()
             all_vehicle_ids = traci.vehicle.getIDList()
             departed_count = traci.simulation.getDepartedNumber()
-            arrived_count = traci.simulation.getArrivedNumber()
+            
+            # ✅ FIX: Tích lũy số xe arrived (getArrivedNumber() chỉ trả về step hiện tại)
+            arrived_this_step = traci.simulation.getArrivedNumber()
+            self.total_arrived_vehicles += arrived_this_step
+            arrived_count = self.total_arrived_vehicles
+            
             total_vehicles_in_sim = len(all_vehicle_ids)
             
             # === BƯỚC 1: Đếm xe qua VehicleCounter ===

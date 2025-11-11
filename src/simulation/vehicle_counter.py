@@ -126,12 +126,12 @@ class VehicleCounter:
     
     def count_vehicles_on_edges(self):
         """Đếm xe HIỆN TẠI trên các edge (không tích lũy)"""
-        # Reset về 0 trước khi đếm (snapshot hiện tại)
+        # ✅ FIX: Reset về 0 trước khi đếm (snapshot hiện tại)
         for junction_id in self.current_counts:
             for direction in self.current_counts[junction_id]:
                 self.current_counts[junction_id][direction] = 0
         
-        # Đếm lại từ đầu
+        # ✅ FIX: Đếm lại từ đầu - CHỈ xe trên edge được chỉ định
         for junction_id, directions in self.junction_edges.items():
             for direction, edges in directions.items():
                 vehicle_count = 0
@@ -139,7 +139,10 @@ class VehicleCounter:
                     try:
                         # Lấy danh sách xe HIỆN TẠI trên edge này
                         vehicles = traci.edge.getLastStepVehicleIDs(edge)
-                        vehicle_count += len(vehicles)
+                        
+                        # ✅ FIX: Chỉ đếm xe ĐANG CHẠY (loại bỏ xe đã arrived/departed)
+                        valid_vehicles = [v for v in vehicles if v in traci.vehicle.getIDList()]
+                        vehicle_count += len(valid_vehicles)
                     
                     except Exception:
                         # Edge có thể không tồn tại hoặc chưa có xe - bỏ qua
