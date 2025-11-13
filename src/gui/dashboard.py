@@ -22,9 +22,9 @@ from simulation.vehicle_counter import VehicleCounter
 from simulation.sensor_manager import SensorManager
 
 try:
-    from controllers.Smart_controller import SmartController
+    from controllers.adaptive_controller import AdaptiveController
 except Exception:
-    SmartController = None
+    AdaptiveController = None
 
 try:
     from controllers.priority_controller import PriorityController
@@ -60,7 +60,7 @@ class SmartTrafficApp(ctk.CTk):
         self.yellow_time = 3
         self.red_time = 3  # all-red time
 
-        # controllers dict for Smart mode
+        # controllers dict for adaptive mode
         self.controllers = {}
         
         # Priority controllers cho từng ngã tư
@@ -663,7 +663,7 @@ class SmartTrafficApp(ctk.CTk):
 
             if self.running:
                 self.start_controllers_if_needed()
-                self.log("Đã kích hoạt Smart Controllers")
+                self.log("Đã kích hoạt Adaptive Controllers")
 
                 # Áp dụng kịch bản hiện tại
                 scenario = self.case_box.get()
@@ -786,7 +786,7 @@ class SmartTrafficApp(ctk.CTk):
         except Exception:
             pass
 
-        # stop Smart controllers
+        # stop adaptive controllers
         self.stop_all_controllers()
         
         # Cleanup Vehicle Counter (just drop reference; dashboard manages traci lifecycle)
@@ -812,21 +812,21 @@ class SmartTrafficApp(ctk.CTk):
 
     # ============ Controllers management ============
     def start_controllers_if_needed(self):
-        if SmartController is None:
-            self.log("❌ SmartController không sẵn có (không import được).")
+        if AdaptiveController is None:
+            self.log("❌ AdaptiveController không sẵn có (không import được).")
             return
         try:
             import traci
             tls_ids = traci.trafficlight.getIDList()
             for tls_id in tls_ids:
                 if tls_id not in self.controllers:
-                    ctrl = SmartController(junction_id=tls_id)
+                    ctrl = AdaptiveController(junction_id=tls_id)
                     ok = ctrl.start()
                     if ok:
                         self.controllers[tls_id] = ctrl
-                        self.log(f"🤖 Smart controller started for {tls_id}")
+                        self.log(f"🤖 Adaptive controller started for {tls_id}")
                     else:
-                        self.log(f"⚠️ Không thể khởi động SmartController cho {tls_id}")
+                        self.log(f"⚠️ Không thể khởi động AdaptiveController cho {tls_id}")
             
             # Khởi động Priority Controllers
             self.init_priority_controllers()
@@ -835,7 +835,7 @@ class SmartTrafficApp(ctk.CTk):
             self.log(f"⚠ Lỗi khi khởi tạo controllers: {e}")
 
     def stop_all_controllers(self):
-        # Stop Smart controllers
+        # Stop adaptive controllers
         for tls_id, ctrl in list(self.controllers.items()):
             try:
                 ctrl.stop()
@@ -843,7 +843,7 @@ class SmartTrafficApp(ctk.CTk):
                 pass
             self.controllers.pop(tls_id, None)
         if self.controllers:
-            self.log("🛑 Dừng tất cả Smart controllers")
+            self.log("🛑 Dừng tất cả adaptive controllers")
         self.controllers = {}
         
         # Stop priority controllers
@@ -883,7 +883,7 @@ class SmartTrafficApp(ctk.CTk):
                     # advance SUMO
                     traci.simulationStep()
 
-                    # Smart controllers step
+                    # adaptive controllers step
                     if self.mode == "Thông minh" and self.controllers:
                         for tls_id, ctrl in list(self.controllers.items()):
                             try:
@@ -1060,7 +1060,7 @@ class SmartTrafficApp(ctk.CTk):
                     dieu_chinh_tat_ca_den(phase_durations)
                     self.log("✅ Áp dụng thời gian mới lên SUMO (Mặc định).")
                 else:
-                    self.log("ℹ️ Đang ở chế độ Thông minh (Smart); thay đổi thời gian không áp dụng.")
+                    self.log("ℹ️ Đang ở chế độ Thông minh (Adaptive); thay đổi thời gian không áp dụng.")
             except Exception:
                 # SUMO not running - nothing to apply now
                 self.log("ℹ️ SUMO chưa chạy; áp dụng sẽ thực hiện khi Start.")
@@ -1204,13 +1204,13 @@ class SmartTrafficApp(ctk.CTk):
             for tls_id in tls_ids[:2]:  # J1 và J4
                 junction_id = "J1" if tls_ids.index(tls_id) == 0 else "J4"
                 
-                # Lấy Smart controller tương ứng nếu có
-                Smart_ctrl = self.controllers.get(tls_id, None)
+                # Lấy adaptive controller tương ứng nếu có
+                adaptive_ctrl = self.controllers.get(tls_id, None)
                 
                 # Tạo Priority Controller với UI callback
                 priority_ctrl = PriorityController(
                     junction_id=junction_id, 
-                    Smart_controller=Smart_ctrl,
+                    adaptive_controller=adaptive_ctrl,
                     ui_callback=self.on_priority_state_change  # Callback để update UI
                 )
                 
@@ -2026,7 +2026,7 @@ class SmartTrafficApp(ctk.CTk):
             
             # 7. CHU KỲ TB (Average Cycle - s)
             if self.mode == "Thông minh" and self.controllers:
-                # Smart mode: Lấy từ controller history
+                # Adaptive mode: Lấy từ controller history
                 cycle_times = []
                 for tls_id, ctrl in self.controllers.items():
                     try:
