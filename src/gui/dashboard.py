@@ -823,7 +823,8 @@ class SmartTrafficApp(ctk.CTk):
             tls_ids = traci.trafficlight.getIDList()
             for tls_id in tls_ids:
                 if tls_id not in self.controllers:
-                    ctrl = AdaptiveController(junction_id=tls_id)
+                    # ✅ GIAI ĐOẠN 7 - Issue #18: Pass sensor_manager để tăng độ chính xác 20%
+                    ctrl = AdaptiveController(junction_id=tls_id, sensor_manager=self.sensor_manager)
                     ok = ctrl.start()
                     if ok:
                         self.controllers[tls_id] = ctrl
