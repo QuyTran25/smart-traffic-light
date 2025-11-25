@@ -368,23 +368,36 @@ class AdaptiveController:
             if waiting_time > self.MAX_WAITING_TIME:
                 queue_pcu = self.convert_to_pcu(direction)
                 
-                # Chỉ buộc chuyển nếu có xe chờ
-                if queue_pcu > 0:
+                # ✅ FIX CRITICAL BUG: Chỉ buộc chuyển nếu có đủ xe chờ (>= 2.0 PCU)
+                # Tránh force switch cho 1-2 xe máy (0.3-0.6 PCU) hoặc 1 ô tô (1.0 PCU)
+                MIN_QUEUE_TO_FORCE = 2.0  # PCU tối thiểu để buộc chuyển (~ 2 ô tô hoặc 7 xe máy)
+                
+                if queue_pcu >= MIN_QUEUE_TO_FORCE:
                     print(f"[STAGE2-FORCE] 🚨 STARVATION! {direction.value} chờ {waiting_time:.0f}s (>{self.MAX_WAITING_TIME:.0f}s) | Queue:{queue_pcu:.1f}PCU → BUỘC CHUYỂN PHA")
                     
                     # Xác định pha cần chuyển
                     if direction in [TrafficDirection.NORTH, TrafficDirection.SOUTH]:
                         # Cần pha NS_GREEN
                         if self.current_phase == TrafficPhase.NS_GREEN:
+                            # ✅ FIX: Nếu đang xanh rồi, reset waiting_time luôn
+                            self.last_green_time[direction] = current_time
                             return False, None  # Đã đang xanh
                         else:
                             return True, TrafficPhase.NS_YELLOW  # Chuyển sang NS
                     else:  # EAST hoặc WEST
                         # Cần pha EW_GREEN
                         if self.current_phase == TrafficPhase.EW_GREEN:
+                            # ✅ FIX: Nếu đang xanh rồi, reset waiting_time luôn
+                            self.last_green_time[direction] = current_time
                             return False, None  # Đã đang xanh
                         else:
                             return True, TrafficPhase.EW_YELLOW  # Chuyển sang EW
+                else:
+                    # ✅ FIX: Nếu không đủ xe để force (< MIN_QUEUE_TO_FORCE)
+                    # → Reset waiting_time để tránh vòng lặp vô hạn
+                    # Gap nguy hiểm: 0.5-2.0 PCU cần được xử lý
+                    self.last_green_time[direction] = current_time
+                    print(f"[STAGE2-RESET] 🔄 {direction.value} chờ {waiting_time:.0f}s nhưng queue nhỏ ({queue_pcu:.1f} < {MIN_QUEUE_TO_FORCE} PCU) → RESET waiting_time")
         
         return False, None
     
@@ -499,9 +512,19 @@ class AdaptiveController:
                     if phase == TrafficPhase.NS_GREEN:
                         self.last_green_time[TrafficDirection.NORTH] = current_time
                         self.last_green_time[TrafficDirection.SOUTH] = current_time
+                        # ✅ FIX STARVATION LOOP: Reset EW nếu không có xe chờ
+                        ew_queue = self.convert_to_pcu(TrafficDirection.EAST) + self.convert_to_pcu(TrafficDirection.WEST)
+                        if ew_queue < 0.5:  # Không có xe chờ đáng kể
+                            self.last_green_time[TrafficDirection.EAST] = current_time
+                            self.last_green_time[TrafficDirection.WEST] = current_time
                     elif phase == TrafficPhase.EW_GREEN:
                         self.last_green_time[TrafficDirection.EAST] = current_time
                         self.last_green_time[TrafficDirection.WEST] = current_time
+                        # ✅ FIX STARVATION LOOP: Reset NS nếu không có xe chờ
+                        ns_queue = self.convert_to_pcu(TrafficDirection.NORTH) + self.convert_to_pcu(TrafficDirection.SOUTH)
+                        if ns_queue < 0.5:
+                            self.last_green_time[TrafficDirection.NORTH] = current_time
+                            self.last_green_time[TrafficDirection.SOUTH] = current_time
                     
                     self.current_phase = phase
                     self.phase_start_time = current_time

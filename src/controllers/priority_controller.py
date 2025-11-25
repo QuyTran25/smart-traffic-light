@@ -69,14 +69,14 @@ class PriorityController:
         
         # Tham số cấu hình
         self.DETECTION_RADIUS = 200.0      # Bán kính phát hiện (mét)
-        self.ETA_THRESHOLD = 12.0          # Ngưỡng ETA để kích hoạt ưu tiên (giây)
+        self.ETA_THRESHOLD = 15.0          # ✅ FIX GIAI ĐOẠN 3 - Issue #10 [Priority-2.5]: 12s→15s (Tăng thời gian chuẩn bị)
         self.CONFIRMATION_WINDOW = 1.0     # Thời gian xác nhận (giây)
-        self.CONFIRMATION_COUNT = 2        # Số lần xác nhận cần thiết
+        self.CONFIRMATION_COUNT = 1        # ✅ FIX GIAI ĐOẠN 3 - Issue #9 [Priority-2.1]: 2→1 (Giảm 20% clearance time)
         self.PREEMPT_MIN_GREEN = 15.0      # Thời gian xanh tối thiểu cho ưu tiên (giây) - phải >= T_MIN_GREEN của Adaptive
         self.SAFE_MIN_GREEN_BEFORE = 4.0   # Thời gian xanh tối thiểu trước khi cắt (giây)
         self.YELLOW_DURATION = 3.0         # Thời gian vàng (giây)
         self.ALL_RED_EMERGENCY = 3.0       # Thời gian All-Red khẩn cấp (giây)
-        self.MAX_PREEMPT_PER_MINUTE = 2    # Giới hạn số lần ưu tiên/phút
+        self.MAX_PREEMPT_PER_MINUTE = 4    # ✅ FIX GIAI ĐOẠN 3 - Issue #8 [Priority-2.2]: 2→4 (Giảm 50% xe bị từ chối)
         self.PREEMPT_COOLDOWN = 60.0       # Thời gian nghỉ giữa các lần ưu tiên (giây)
         
         # Danh sách loại xe ưu tiên (type ID và vehicle class)
@@ -92,16 +92,31 @@ class PriorityController:
         }
         
         # Mapping hướng với edges (SUMO network edges)
-        # Bắc: Từ J2 xuống J1 (-E1)
-        # Nam: Từ J3 lên J1 (-E2)  
-        # Đông: Từ J1 sang J4 (E3)
-        # Tây: Từ J0 sang J1 (E0)
-        self.direction_edges = {
-            "Bắc": ["-E1"],
-            "Nam": ["-E2"],
-            "Đông": ["E3"],
-            "Tây": ["E0"]
-        }
+        # ✅ FIX: Edge mapping cho từng ngã tư
+        # J1: Bắc(-E1), Nam(-E2), Đông(E3), Tây(E0)
+        # J4: Bắc(-E4), Nam(-E5), Đông(-E6), Tây(-E3)
+        if junction_id == "J1":
+            self.direction_edges = {
+                "Bắc": ["-E1", "E1"],   # From J2 to J1, and J1 to J2
+                "Nam": ["-E2", "E2"],   # From J3 to J1, and J1 to J3
+                "Đông": ["E3", "-E3"],  # From J1 to J4, and J4 to J1
+                "Tây": ["E0", "-E0"]    # From J0 to J1, and J1 to J0
+            }
+        elif junction_id == "J4":
+            self.direction_edges = {
+                "Bắc": ["-E4", "E4"],   # From J5 to J4, and J4 to J5
+                "Nam": ["-E5", "E5"],   # From J6 to J4, and J4 to J6
+                "Đông": ["-E6", "E6"],  # From J7 to J4, and J4 to J7
+                "Tây": ["-E3", "E3"]    # From J1 to J4, and J4 to J1
+            }
+        else:
+            # Default fallback
+            self.direction_edges = {
+                "Bắc": ["-E1"],
+                "Nam": ["-E2"],
+                "Đông": ["E3"],
+                "Tây": ["E0"]
+            }
         
         # Mapping hướng với pha đèn
         self.direction_phases = {
@@ -385,6 +400,69 @@ class PriorityController:
             print(f"❌ Lỗi khi kiểm tra loại xe {vehicle_id}: {e}")
             return False
     
+    def is_emergency_vehicle_blocked(self, vehicle_id: str) -> Tuple[bool, Optional[str]]:
+        """
+        ✅ FIX GIAI ĐOẠN 3 - CRITICAL: Kiểm tra xe ưu tiên có bị kẹt sau xe thường không
+        
+        Logic:
+        - Xe ưu tiên CÓ THỂ tự vượt đèn đỏ (jmDriveAfterRedTime=0.0)
+        - NHƯNG không thể vượt xe thường đang chờ đèn đỏ phía trước
+        - CHỈ cần chuyển đèn xanh khi xe ưu tiên BỊ KẸT sau xe thường
+        
+        Args:
+            vehicle_id: ID của xe ưu tiên
+            
+        Returns:
+            Tuple (is_blocked, reason):
+                - is_blocked: True nếu xe bị kẹt (CẦN chuyển đèn)
+                             False nếu xe tự do (KHÔNG cần chuyển đèn)
+                - reason: Lý do ("no_leader", "leader_is_emergency", "blocked_by_queue", etc.)
+        """
+        try:
+            # Lấy xe phía trước (leader) trong vòng 50m
+            leader = traci.vehicle.getLeader(vehicle_id, 50.0)
+            
+            if leader is None:
+                # Không có xe phía trước → Tự do!
+                return (False, "no_leader")
+            
+            leader_id, distance_to_leader = leader
+            
+            # Kiểm tra leader có phải xe ưu tiên không
+            if self.is_emergency_vehicle(leader_id):
+                # Leader cũng là xe ưu tiên → OK, cả hai đều vượt được
+                return (False, "leader_is_emergency")
+            
+            # Lấy tốc độ của cả hai xe
+            try:
+                speed = traci.vehicle.getSpeed(vehicle_id)
+                leader_speed = traci.vehicle.getSpeed(leader_id)
+            except:
+                # Không lấy được tốc độ → Giả định bị kẹt (safe side)
+                return (True, "speed_unavailable")
+            
+            # ĐIỀU KIỆN BỊ KẸT:
+            # 1. Xe ưu tiên chạy chậm (<5m/s = 18km/h)
+            # 2. Leader (xe thường) cũng chạy chậm (<5m/s)
+            # 3. Khoảng cách gần (<20m)
+            # → Xe ưu tiên đang bị kẹt sau hàng xe chờ đèn đỏ!
+            
+            if speed < 5.0 and leader_speed < 5.0 and distance_to_leader < 20.0:
+                return (True, f"blocked_by_queue (leader:{leader_id}, dist:{distance_to_leader:.1f}m, speed:{speed:.1f}m/s)")
+            
+            # ĐIỀU KIỆN BỊ KẸT NGHIÊM TRỌNG:
+            # Xe ưu tiên gần như dừng hẳn (<1m/s) và có xe phía trước trong vòng 30m
+            if speed < 1.0 and distance_to_leader < 30.0:
+                return (True, f"severely_blocked (leader:{leader_id}, dist:{distance_to_leader:.1f}m, stopped)")
+            
+            # Các trường hợp còn lại: Xe tự do
+            return (False, f"free (leader:{leader_id}, dist:{distance_to_leader:.1f}m, speed:{speed:.1f}m/s)")
+            
+        except Exception as e:
+            print(f"⚠️ Lỗi khi kiểm tra xe bị kẹt {vehicle_id}: {e}")
+            # Nếu có lỗi → Giả định BỊ KẸT (safe side, ưu tiên an toàn xe ưu tiên)
+            return (True, f"error_check: {e}")
+    
     def scan_for_emergency_vehicles(self) -> List[EmergencyVehicle]:
         """
         Quét tìm xe ưu tiên trong bán kính phát hiện
@@ -539,6 +617,45 @@ class PriorityController:
             
         return True
     
+    def get_direction_pressure(self, direction_name: str) -> float:
+        """
+        ✅ FIX GIAI ĐOẠN 3: Lấy áp lực (pressure) của một hướng từ AdaptiveController
+        
+        Args:
+            direction_name: Tên hướng ("Bắc", "Nam", "Đông", "Tây")
+            
+        Returns:
+            Áp lực (PCU), hoặc 0.0 nếu không có AdaptiveController
+        """
+        if not self.adaptive_controller:
+            return 0.0
+        
+        try:
+            # Map tên hướng tiếng Việt sang TrafficDirection enum
+            direction_map = {
+                "Bắc": "NORTH",
+                "Nam": "SOUTH",
+                "Đông": "EAST",
+                "Tây": "WEST"
+            }
+            
+            direction_enum_name = direction_map.get(direction_name)
+            if not direction_enum_name:
+                return 0.0
+            
+            # Lấy enum từ AdaptiveController
+            TrafficDirection = self.adaptive_controller.TrafficDirection
+            direction_enum = TrafficDirection[direction_enum_name]
+            
+            # Tính pressure (áp lực) = PCU của hàng đợi
+            pressure = self.adaptive_controller.convert_to_pcu(direction_enum)
+            
+            return pressure
+            
+        except Exception as e:
+            print(f"⚠️ Lỗi khi lấy pressure hướng {direction_name}: {e}")
+            return 0.0
+    
     def select_priority_vehicle(self, vehicles: List[EmergencyVehicle]) -> Optional[EmergencyVehicle]:
         """
         Chọn xe ưu tiên từ danh sách (ưu tiên xe đến trước)
@@ -584,20 +701,38 @@ class PriorityController:
         if not eligible:
             return None
         
-        # Sắp xếp theo ETA
-        eligible.sort(key=lambda v: v.eta)
+        # ✅ FIX GIAI ĐOẠN 3: Ưu tiên xe bị kẹt
+        # Phân loại xe theo trạng thái bị kẹt
+        blocked_vehicles = []
+        free_vehicles = []
         
-        # SC3: Nếu có 2+ xe và ETA gần nhau
-        if len(eligible) >= 2:
-            eta_diff = abs(eligible[0].eta - eligible[1].eta)
-            if eta_diff <= 2.0:
-                # ETA gần nhau (±2s) → Chọn xe gần hơn
-                print(f"⚡ SC3: Có {len(eligible)} xe, ETA gần nhau ({eta_diff:.1f}s)")
-                print(f"   Chọn xe gần hơn theo distance")
-                eligible.sort(key=lambda v: v.distance)
+        for v in eligible:
+            is_blocked, reason = self.is_emergency_vehicle_blocked(v.vehicle_id)
+            if is_blocked:
+                blocked_vehicles.append((v, reason))
+            else:
+                free_vehicles.append((v, reason))
         
-        # Xe được chọn
-        selected = eligible[0]
+        # Ưu tiên xử lý xe bị kẹt trước
+        if blocked_vehicles:
+            # Có xe bị kẹt → Sắp xếp theo ETA
+            blocked_vehicles.sort(key=lambda x: x[0].eta)
+            selected = blocked_vehicles[0][0]
+            print(f"⚡ SC3: Chọn xe BỊ KẸT (có {len(blocked_vehicles)} xe bị kẹt, {len(free_vehicles)} xe tự do)")
+        else:
+            # Không có xe bị kẹt → Chọn theo ETA (nhưng thường sẽ không kích hoạt ưu tiên)
+            eligible.sort(key=lambda v: v.eta)
+            
+            # SC3: Nếu có 2+ xe và ETA gần nhau
+            if len(eligible) >= 2:
+                eta_diff = abs(eligible[0].eta - eligible[1].eta)
+                if eta_diff <= 2.0:
+                    # ETA gần nhau (±2s) → Chọn xe gần hơn
+                    print(f"⚡ SC3: Có {len(eligible)} xe, ETA gần nhau ({eta_diff:.1f}s)")
+                    print(f"   Chọn xe gần hơn theo distance")
+                    eligible.sort(key=lambda v: v.distance)
+            
+            selected = eligible[0]
         
         # Xe còn lại → Đưa vào pending queue
         for v in eligible[1:]:
@@ -863,16 +998,61 @@ class PriorityController:
             self.confirmed_vehicles.clear()
             return
         
-        # --- BƯỚC 2: Phân loại theo ETA ---
-        if priority_vehicle.eta > 30:
-            # ETA quá xa → Chờ (đặt lịch)
-            print(f"⏰ ETA={priority_vehicle.eta:.1f}s > 30s, chờ xe đến gần hơn...")
-            return  # Giữ ở DETECTION, chờ ETA giảm
+        # --- BƯỚC 2: Kiểm tra xe có bị kẹt không (KIỂM TRA TRƯỚC ETA) ---
+        is_blocked, block_reason = self.is_emergency_vehicle_blocked(priority_vehicle.vehicle_id)
         
-        if priority_vehicle.eta > 12:
-            # ETA trong khoảng 12-30s → Monitor tiếp
-            print(f"⏳ ETA={priority_vehicle.eta:.1f}s, tiếp tục theo dõi...")
-            return  # Giữ ở DETECTION
+        # --- BƯỚC 2.5: Phân loại theo ETA (CHỈ khi xe KHÔNG bị kẹt) ---
+        if not is_blocked:
+            # Xe tự do → Dùng ETA để quyết định
+            if priority_vehicle.eta > 30:
+                # ETA quá xa → Chờ (đặt lịch)
+                print(f"⏰ ETA={priority_vehicle.eta:.1f}s > 30s, chờ xe đến gần hơn...")
+                return  # Giữ ở DETECTION, chờ ETA giảm
+            
+            if priority_vehicle.eta > self.ETA_THRESHOLD:  # 15s (đã fix từ 12s)
+                # ETA trong khoảng 15-30s → Monitor tiếp
+                print(f"⏳ ETA={priority_vehicle.eta:.1f}s, tiếp tục theo dõi...")
+                return  # Giữ ở DETECTION
+        else:
+            # ✅ FIX: Xe BỊ KẸT → Dùng DISTANCE thay vì ETA
+            if priority_vehicle.distance > 100:
+                # Xe bị kẹt quá xa (>100m) → Chờ đến gần hơn
+                print(f"⏰ Xe BỊ KẸT nhưng còn xa ({priority_vehicle.distance:.1f}m > 100m), chờ đến gần...")
+                return  # Giữ ở DETECTION
+            
+            # Xe bị kẹt trong phạm vi 100m → Kích hoạt ưu tiên ngay
+            print(f"🚨 Xe BỊ KẸT trong phạm vi {priority_vehicle.distance:.1f}m → Ưu tiên NGAY")
+        
+        # --- BƯỚC 3: Hiển thị thông tin phân tích ---
+        print(f"=" * 60)
+        print(f"🔍 KIỂM TRA XE BỊ KẸT")
+        print(f"   Xe: {priority_vehicle.vehicle_id}")
+        print(f"   Khoảng cách: {priority_vehicle.distance:.1f}m")
+        print(f"   Tốc độ: {priority_vehicle.speed:.1f}m/s")
+        print(f"   ETA: {priority_vehicle.eta:.1f}s")
+        print(f"   Bị kẹt: {'CÓ' if is_blocked else 'KHÔNG'} - {block_reason}")
+        
+        if not is_blocked:
+            # Xe KHÔNG bị kẹt → Có thể tự vượt đèn đỏ
+            print(f"✅ Xe ưu tiên KHÔNG bị kẹt → TỰ VƯỢT được")
+            print(f"   → KHÔNG kích hoạt ưu tiên (tiết kiệm chu kỳ đèn)")
+            print(f"=" * 60)
+            
+            # Quay về NORMAL, theo dõi thôi (không can thiệp)
+            self.transition_to_state(PreemptionState.NORMAL, {
+                'reason': 'emergency_vehicle_not_blocked',
+                'vehicle_id': priority_vehicle.vehicle_id,
+                'can_self_pass': True
+            })
+            
+            # Xóa khỏi confirmed_vehicles để không xử lý nữa
+            if priority_vehicle.vehicle_id in self.confirmed_vehicles:
+                del self.confirmed_vehicles[priority_vehicle.vehicle_id]
+            
+            return
+        
+        print(f"⚠️ Xe ưu tiên BỊ KẸT → CẦN chuyển đèn xanh")
+        print(f"=" * 60)
         
         # --- BƯỚC 3: ETA ≤ 12s → Kiểm tra rate limit (SC6) ---
         if not self.can_activate_preemption():
@@ -934,14 +1114,49 @@ class PriorityController:
         except Exception as e:
             print(f"⚠️ Lỗi khi kiểm tra pha đèn: {e}")
         
-        # --- BƯỚC 5: Kiểm tra SC2 (safe_min_green) ---
+        # --- BƯỚC 5: Kiểm tra SC2 (safe_min_green) với điều chỉnh theo mật độ ---
         if self.adaptive_controller:
             try:
                 phase_elapsed = self.adaptive_controller.get_phase_elapsed_time(current_time)
                 
-                if phase_elapsed < self.SAFE_MIN_GREEN_BEFORE:  # 4s
-                    remaining = self.SAFE_MIN_GREEN_BEFORE - phase_elapsed
-                    print(f"⏸️ SC2: Chờ {remaining:.1f}s để đủ safe_min_green (4s)")
+                # ✅ FIX GIAI ĐOẠN 3: Điều chỉnh SAFE_MIN_GREEN theo mật độ
+                # Lấy áp lực của các hướng
+                current_phase = traci.trafficlight.getPhase(self.junction_id)
+                
+                # Xác định hướng đang được xanh
+                if current_phase == 0:  # NS_GREEN
+                    current_directions = ["Bắc", "Nam"]
+                elif current_phase == 3:  # EW_GREEN
+                    current_directions = ["Đông", "Tây"]
+                else:
+                    current_directions = []
+                
+                # Tính tổng áp lực hướng đang xanh
+                total_current_pressure = sum(
+                    self.get_direction_pressure(d) for d in current_directions
+                )
+                
+                # Điều chỉnh SAFE_MIN_GREEN dựa trên mật độ
+                base_safe_min = 4.0  # Giá trị cơ bản
+                
+                if total_current_pressure > 25.0:
+                    # Hướng hiện tại QUÁ TẮC (>25 PCU) → Tăng thời gian an toàn
+                    adjusted_safe_min = 7.0  # Tăng từ 4s → 7s
+                    print(f"⚠️ Hướng {', '.join(current_directions)} QUÁ TẮC ({total_current_pressure:.1f} PCU)")
+                    print(f"   → Tăng safe_min_green: {base_safe_min}s → {adjusted_safe_min}s")
+                elif total_current_pressure > 15.0:
+                    # Hướng hiện tại TẮC VỪA (15-25 PCU) → Tăng ít
+                    adjusted_safe_min = 5.5  # Tăng từ 4s → 5.5s
+                    print(f"⚠️ Hướng {', '.join(current_directions)} TẮC VỪA ({total_current_pressure:.1f} PCU)")
+                    print(f"   → Tăng safe_min_green: {base_safe_min}s → {adjusted_safe_min}s")
+                else:
+                    # Hướng hiện tại THÔNG THOÁNG (<15 PCU) → Giữ nguyên
+                    adjusted_safe_min = base_safe_min
+                    print(f"✅ Hướng {', '.join(current_directions)} THÔNG THOÁNG ({total_current_pressure:.1f} PCU)")
+                
+                if phase_elapsed < adjusted_safe_min:
+                    remaining = adjusted_safe_min - phase_elapsed
+                    print(f"⏸️ SC2: Chờ {remaining:.1f}s để đủ safe_min_green ({adjusted_safe_min}s)")
                     print(f"   Pha hiện tại mới xanh được {phase_elapsed:.1f}s")
                     return  # Giữ ở DETECTION
                     
