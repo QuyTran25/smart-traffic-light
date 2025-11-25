@@ -68,7 +68,7 @@ class PriorityController:
         self.is_active = False
         
         # Tham số cấu hình
-        self.DETECTION_RADIUS = 200.0      # Bán kính phát hiện (mét)
+        self.DETECTION_RADIUS = 150.0      # Bán kính phát hiện (mét) - GIẢM TỪ 200m→150m (tránh detect xe ở ngã tư khác)
         self.ETA_THRESHOLD = 15.0          # ✅ FIX GIAI ĐOẠN 3 - Issue #10 [Priority-2.5]: 12s→15s (Tăng thời gian chuẩn bị)
         self.CONFIRMATION_WINDOW = 1.0     # Thời gian xác nhận (giây)
         self.CONFIRMATION_COUNT = 1        # ✅ FIX GIAI ĐOẠN 3 - Issue #9 [Priority-2.1]: 2→1 (Giảm 20% clearance time)
@@ -1582,45 +1582,103 @@ class PriorityController:
             warning_dirs = []
             ok_dirs = list(affected_directions)
         
-        # Hệ số bù phụ thuộc vào emergency mode
-        if self.emergency_mode_active:
-            base_factor = 0.4  # Bù ít hơn trong emergency mode
-            print(f"   ⚠️ Emergency mode: Bù thận trọng hơn")
-        else:
-            base_factor = 0.6  # Bù bình thường
-            print(f"   Bù thời gian dựa trên mức độ backlog")
+        # --- BƯỚC 4: Áp dụng bù cho Adaptive (GIAI ĐOẠN 4 - Issue #12) ---
+        # ✅ CÔNG THỨC MỚI: Compensation = Duration × (Base + Queue_Bonus + Severity_Bonus)
+        # Base: 60%, Queue_Bonus: 0-30%, Severity_Bonus: 0-10% → Tổng: 60-105%
         
-        # --- BƯỚC 4: Áp dụng bù cho Adaptive ---
+        MAX_COMPENSATION_PER_DIRECTION = 60.0  # Giới hạn tối đa 60s/hướng (chống đói)
+        
         if self.adaptive_controller:
             try:
-                # ✅ CHIẾN LƯỢC BÙ THÔNG MINH:
+                print(f"   📊 CHIẾN LƯỢC BÙ THÔNG MINH (Base 60% + Queue Bonus + Severity Bonus):")
+                print(f"   Giới hạn tối đa: {MAX_COMPENSATION_PER_DIRECTION}s/hướng")
+                print(f"-" * 60)
                 
-                # 1. Hướng CRITICAL: Bù 80-100%
-                for direction in critical_dirs:
-                    lost_green = preemption_duration
-                    compensation_time = lost_green * (base_factor + 0.30)  # +30%
+                # Xử lý TẤT CẢ hướng bị ảnh hưởng
+                for direction in affected_directions:
+                    info = backlog_report.get(direction, {})
+                    status = info.get('status', 'OK')
+                    current_queue = info.get('current_queue', 0)
+                    severity = info.get('severity', 0)
+                    
+                    # --- BASE FACTOR ---
+                    base_factor = 0.6  # 60% cơ bản
+                    
+                    # --- QUEUE BONUS (dựa vào mật độ xe) ---
+                    if current_queue < 2.0:
+                        queue_bonus = 0.0     # Ít xe, không cần bù nhiều
+                    elif current_queue < 5.0:
+                        queue_bonus = 0.10    # Trung bình
+                    elif current_queue < 10.0:
+                        queue_bonus = 0.20    # Nhiều xe
+                    else:
+                        queue_bonus = 0.30    # Rất đông (>10 PCU)
+                    
+                    # --- SEVERITY BONUS (dựa vào backlog) ---
+                    if status == 'CRITICAL':
+                        severity_bonus = 0.10   # +10%
+                    elif status == 'WARNING':
+                        severity_bonus = 0.05   # +5%
+                    else:
+                        severity_bonus = 0.0    # OK
+                    
+                    # --- TÍNH COMPENSATION ---
+                    total_factor = base_factor + queue_bonus + severity_bonus
+                    compensation_time = preemption_duration * total_factor
+                    
+                    # --- GIỚI HẠN TỐI ĐA (chống đói) ---
+                    if compensation_time > MAX_COMPENSATION_PER_DIRECTION:
+                        compensation_time = MAX_COMPENSATION_PER_DIRECTION
+                        print(f"   ⚠️ {direction}: Giới hạn xuống {MAX_COMPENSATION_PER_DIRECTION}s (tránh bỏ đói)")
+                    
+                    # --- ÁP DỤNG GREEN DEBT ---
                     self.adaptive_controller.add_green_debt(direction, compensation_time)
-                    print(f"   🔴 CRITICAL {direction}: Bù {compensation_time:.1f}s ({int((base_factor + 0.30)*100)}%)")
-                
-                # 2. Hướng WARNING: Bù 60-80%
-                for direction in warning_dirs:
-                    lost_green = preemption_duration
-                    compensation_time = lost_green * (base_factor + 0.10)  # +10%
-                    self.adaptive_controller.add_green_debt(direction, compensation_time)
-                    print(f"   🟡 WARNING {direction}: Bù {compensation_time:.1f}s ({int((base_factor + 0.10)*100)}%)")
-                
-                # 3. Hướng OK: Bù 40-60%
-                for direction in ok_dirs:
-                    lost_green = preemption_duration
-                    compensation_time = lost_green * base_factor
-                    self.adaptive_controller.add_green_debt(direction, compensation_time)
-                    print(f"   🟢 OK {direction}: Bù {compensation_time:.1f}s ({int(base_factor*100)}%)")
+                    
+                    # --- LOG CHI TIẾT ---
+                    status_icon = {'CRITICAL': '🔴', 'WARNING': '🟡', 'OK': '🟢'}.get(status, '⚪')
+                    print(f"   {status_icon} {direction}: Queue={current_queue:.1f} PCU")
+                    print(f"      Base={int(base_factor*100)}% + Queue={int(queue_bonus*100)}% + Severity={int(severity_bonus*100)}% = {int(total_factor*100)}%")
+                    print(f"      Bù: {compensation_time:.1f}s (từ {preemption_duration:.1f}s)")
                 
                 print(f"=" * 60)
                 
-                # Kích hoạt lại Adaptive
+                # ✅ GIAI ĐOẠN 4 - Issue #11: Kiểm tra waiting_time (chống đói layer 2)
+                print(f"\n   🛡️ KIỂM TRA CHỐNG ĐÓI:")
+                max_waiting_direction = None
+                max_waiting_time = 0.0
+                
+                try:
+                    current_time_check = traci.simulation.getTime()
+                    all_directions_list = ["Bắc", "Nam", "Đông", "Tây"]
+                    
+                    for dir_name in all_directions_list:
+                        last_green = self.adaptive_controller.last_green_time.get(dir_name, 0)
+                        waiting = current_time_check - last_green
+                        
+                        if waiting > max_waiting_time:
+                            max_waiting_time = waiting
+                            max_waiting_direction = dir_name
+                        
+                        if waiting > 40:  # CRITICAL_WAITING_TIME
+                            print(f"      ⚠️ {dir_name}: Chờ {waiting:.0f}s (>40s CRITICAL!)")
+                        elif waiting > 30:
+                            print(f"      🟡 {dir_name}: Chờ {waiting:.0f}s")
+                    
+                    if max_waiting_time > 40:
+                        print(f"      🚨 Hướng {max_waiting_direction} chờ {max_waiting_time:.0f}s → Adaptive sẽ ưu tiên")
+                    else:
+                        print(f"      ✅ Tất cả hướng waiting_time < 40s (OK)")
+                        
+                except Exception as e:
+                    print(f"      ⚠️ Không thể kiểm tra waiting_time: {e}")
+                
+                # Kích hoạt lại Adaptive - Tự động chọn phase dựa trên Queue + Debt + Waiting
                 self.adaptive_controller.is_active = True
-                print(f"   ✅ Adaptive Controller đã được kích hoạt lại")
+                print(f"\n   ✅ Adaptive Controller đã được kích hoạt lại")
+                print(f"   ℹ️ Adaptive sẽ TỰ ĐỘNG chọn phase dựa trên:")
+                print(f"      • Mật độ xe hiện tại (Queue PCU)")
+                print(f"      • Thời gian bù (Green Debt)")
+                print(f"      • Thời gian chờ (Waiting Time)")
                 
             except Exception as e:
                 print(f"   ⚠️ Lỗi khi bù thời gian: {e}")

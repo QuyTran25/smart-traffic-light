@@ -295,6 +295,27 @@ class AdaptiveController:
                 print(f"   Severity: {severity:.0f}/100")
                 print(f"   Bù: {compensation:.1f}s (Nợ còn: {self.green_debts[direction_name]:.1f}s)")
         
+        # ✅ GIAI ĐOẠN 4 - Issue #11: Kiểm tra waiting_time hướng khác (chống đói layer 3)
+        # Nếu có hướng chờ >40s (CRITICAL), giới hạn green_time xuống 45s để chuyển pha sớm
+        try:
+            current_time = traci.simulation.getTime()
+            max_waiting_other = 0.0
+            
+            for dir_name in ["Bắc", "Nam", "Đông", "Tây"]:
+                if dir_name != direction_name:  # Các hướng khác
+                    last_green = self.last_green_time.get(dir_name, 0)
+                    waiting = current_time - last_green
+                    max_waiting_other = max(max_waiting_other, waiting)
+            
+            if max_waiting_other > 40:  # CRITICAL_WAITING_TIME
+                MAX_GREEN_WITH_CRITICAL = 45.0  # Giới hạn 45s khi có hướng khác CRITICAL
+                if green_time > MAX_GREEN_WITH_CRITICAL:
+                    original_green = green_time
+                    green_time = MAX_GREEN_WITH_CRITICAL
+                    print(f"   ⚠️ GIỚI HẠN: {direction_name} {original_green:.1f}s → {green_time:.1f}s (hướng khác chờ {max_waiting_other:.0f}s)")
+        except Exception as e:
+            pass  # Không crash nếu lỗi
+        
         # Giới hạn trong khoảng [T_MIN_GREEN, T_MAX_GREEN]
         green_time = max(self.T_MIN_GREEN, min(green_time, self.T_MAX_GREEN))
         

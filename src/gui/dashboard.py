@@ -651,7 +651,7 @@ class SmartTrafficApp(ctk.CTk):
                     self.log(f"Đã chuyển sang chế độ Fixed-Time (Xanh {green}s, Vàng {yellow}s, All-Red {red}s)")
 
                     # Xe ưu tiên: ngẫu nhiên
-                    self.start_default_priority_spawning(interval=30)
+                    self.start_default_priority_spawning(interval=200)
 
                 except Exception as e:
                     self.log(f"Không thể áp dụng Fixed-Time: {e}")
@@ -738,7 +738,7 @@ class SmartTrafficApp(ctk.CTk):
             self.apply_scenario_to_sumo(scenario)
         else:
             # Chế độ Mặc định: xe ưu tiên ngẫu nhiên
-            self.start_default_priority_spawning(interval=30)
+            self.start_default_priority_spawning(interval=200)
 
         # Áp dụng chế độ (Mặc định / Thông minh)
         if self.mode == "Mặc định":
@@ -1090,8 +1090,8 @@ class SmartTrafficApp(ctk.CTk):
                 self.log("🚗 Kịch bản mặc định: Lưu lượng đều từ 4 hướng.")
                 # Dừng spawning xe ưu tiên nếu có
                 self.stop_priority_spawning()
-                # Spawn xe ưu tiên ngẫu nhiên từ MỌI hướng (khoảng 1 xe mỗi 30s)
-                self.start_default_priority_spawning(interval=30)
+                # Spawn xe ưu tiên ngẫu nhiên từ MỌI hướng (khoảng 1 xe mỗi 200s)
+                self.start_default_priority_spawning(interval=200)
 
             elif scenario_name == "SC1 - Xe ưu tiên từ hướng chính trong giờ cao điểm":
                 self.log("🚓 SC1: Xe ưu tiên từ hướng chính (Bắc/Nam) - Chỉ spawn từ -E1, -E2, -E4, -E5.")
@@ -1330,13 +1330,13 @@ class SmartTrafficApp(ctk.CTk):
     
     # ✅ XÓA HÀM TRÙNG start_false_alarm_simulation (chỉ giữ hàm ở dòng 1548)
     
-    def start_default_priority_spawning(self, interval=100):
+    def start_default_priority_spawning(self, interval=200):
         """
         Spawn xe ưu tiên cho kịch bản Mặc định
         Mô phỏng 0.3% xe ưu tiên random từ mọi hướng
         
         Args:
-            interval: Khoảng thời gian giữa các lần spawn (giây)
+            interval: Khoảng thời gian giữa các lần spawn (giây) - MẶC ĐỊNH 200s (thực tế ~3 xe/600s)
         """
         # Dừng spawning cũ nếu có
         self.stop_priority_spawning()
@@ -1349,7 +1349,8 @@ class SmartTrafficApp(ctk.CTk):
             import time
             import random
             
-            all_directions = ["north", "south", "east", "west"]
+            # Chỉ spawn từ 3 hướng có route (không có "east")
+            all_directions = ["north", "south", "west"]
             
             while self.spawning_active:
                 try:
