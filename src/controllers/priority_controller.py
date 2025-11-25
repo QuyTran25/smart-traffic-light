@@ -151,6 +151,7 @@ class PriorityController:
         self.clearance_times: List[float] = []  # Danh sách clearance time của tất cả xe
         self.EXCELLENT_CLEARANCE = 15.0  # ≤ 15s: Tốt
         self.ACCEPTABLE_CLEARANCE = 25.0  # ≤ 25s: Chấp nhận được
+        self._debug_distance_logged: Set[str] = set()  # Track vehicles already logged for debugging
     
     def _log_false_positive(self, vehicle_id: str, reason: str, stage: str):
         """
@@ -267,25 +268,22 @@ class PriorityController:
             try:
                 # Kiểm tra xe còn trong simulation không
                 if vid not in traci.vehicle.getIDList():
-                    # Xe đã despawn → Đã qua
+                    # Xe đã despawn
                     vehicle.served = True
                     
-                    # ✅ Tính Emergency Clearance Time
-                    self._calculate_and_log_clearance_time(vehicle, current_time)
+                    # ✅ Tính Emergency Clearance Time - CHỈ KHI ĐÃ ĐẾN GẦN NGÃ TƯ
+                    if vehicle.has_approached:
+                        self._calculate_and_log_clearance_time(vehicle, current_time)
+                        print(f"✅ Xe {vid} đã qua ngã tư (despawned)")
+                    else:
+                        print(f"⚠️ Xe {vid} despawn trước khi đến gần ngã tư (distance luôn > 30m)")
                     
                     self.served_vehicles.append(vehicle)
                     del self.confirmed_vehicles[vid]
-                    print(f"✅ Xe {vid} đã qua ngã tư (despawned)")
                     continue
                 
                 # Tính lại distance
                 distance = self.calculate_distance_to_junction(vid)
-                
-                # Debug: In distance để kiểm tra
-                if vid not in getattr(self, '_debug_distance_logged', set()):
-                    if not hasattr(self, '_debug_distance_logged'):
-                        self._debug_distance_logged = set()
-                    print(f"🔍 DEBUG Distance: Xe {vid} - distance = {distance:.1f}m, has_approached = {vehicle.has_approached}")
                 
                 # ✅ LOGIC MỚI: Tracking 2 giai đoạn
                 # Giai đoạn 1: Xe đến gần ngã tư (distance < 30m)
@@ -294,7 +292,7 @@ class PriorityController:
                     print(f"📍 Xe {vid} đã đến gần ngã tư (distance={distance:.1f}m)")
                 
                 # Giai đoạn 2: Xe đi xa khỏi ngã tư (distance > 30m) SAU KHI đã đến gần
-                if vehicle.has_approached and distance > 30:
+                elif vehicle.has_approached and distance > 30:
                     # Xe đã qua ngã tư: đã gần (< 30m) → bây giờ xa (> 30m)
                     vehicle.served = True
                     
@@ -304,10 +302,6 @@ class PriorityController:
                     self.served_vehicles.append(vehicle)
                     del self.confirmed_vehicles[vid]
                     print(f"✅ Xe {vid} đã qua ngã tư (distance={distance:.1f}m, đi xa sau khi đã gần)")
-                    
-                    # Log lại để tracking distance lần sau (cho xe khác)
-                    if hasattr(self, '_debug_distance_logged'):
-                        self._debug_distance_logged.discard(vid)
                     continue
                     
             except Exception as e:
