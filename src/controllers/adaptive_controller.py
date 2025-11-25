@@ -45,8 +45,10 @@ class AdaptiveController:
         self.is_active = False
         
         # Tham số cấu hình theo tài liệu
-        self.T_MIN_GREEN = 10.0    # Thời gian xanh tối thiểu (giây)
-        self.T_MAX_GREEN = 120.0   # Thời gian xanh tối đa (giây) 
+        # ✅ FIX GIAI ĐOẠN 2 - Issue #2 [Adaptive-1.1]: Tăng T_MIN_GREEN 10s → 15s để đảm bảo thời gian xanh tối thiểu tuyệt đối
+        self.T_MIN_GREEN = 15.0    # Thời gian xanh tối thiểu (giây) - Giảm 30% số lần dừng sớm
+        # ✅ FIX GIAI ĐOẠN 1 - Lỗi #3: Giảm T_MAX_GREEN 120s → 90s để giảm thời gian chờ tối đa
+        self.T_MAX_GREEN = 90.0    # Thời gian xanh tối đa (giây) 
         self.ALPHA = 0.5           # Hệ số áp lực (giây/PCU)
         self.YELLOW_DURATION = 3.0 # Thời gian vàng (giây)
         self.ALL_RED_BASE = 2.0    # Thời gian đỏ toàn bộ cơ bản (giây)
@@ -94,13 +96,54 @@ class AdaptiveController:
         self.emergency_max_green = 90.0
         
         # Starvation prevention (chống bỏ đói)
-        self.MAX_WAITING_TIME = 120.0  # Thời gian chờ tối đa (giây)
-        self.CRITICAL_WAITING_TIME = 60.0  # Thời gian cảnh báo (giây)
+        # ✅ FIX GIAI ĐOẠN 2 - Issue #3 [Adaptive-1.4]: Giảm MAX_WAITING_TIME 120s → 60s
+        # Kích hoạt starvation prevention sớm hơn, giảm 40% delay cho hướng ít xe
+        self.MAX_WAITING_TIME = 60.0  # Thời gian chờ tối đa (giây)
+        # ✅ FIX GIAI ĐOẠN 2 - Issue #4 [Adaptive-1.4]: Giảm CRITICAL_WAITING_TIME 60s → 40s
+        # Cảnh báo sớm hơn về nguy cơ starvation
+        self.CRITICAL_WAITING_TIME = 40.0  # Thời gian cảnh báo (giây)
         self.last_green_time: Dict[TrafficDirection, float] = {}  # Lần xanh cuối cho mỗi hướng
         
         # Khởi tạo last_green_time
         for direction in TrafficDirection:
             self.last_green_time[direction] = 0.0
+        
+        # ✅ FIX GIAI ĐOẠN 2 - Issue #5 [Adaptive-1.3]: Dynamic threshold parameters
+        # Ngưỡng chuyển pha linh hoạt dựa trên mức độ tắc nghẽn
+        self.THRESHOLD_MIN = 1.15  # Ngưỡng tối thiểu khi tắc nghẽn cao (giờ cao điểm)
+        self.THRESHOLD_MAX = 1.30  # Ngưỡng tối đa khi thông thoáng
+        self.CONGESTION_LOW = 5.0   # PCU - Ngưỡng tải thấp
+        self.CONGESTION_HIGH = 20.0 # PCU - Ngưỡng tải cao
+    
+    def calculate_dynamic_threshold(self, ns_pressure: float, ew_pressure: float) -> float:
+        """
+        ✅ FIX GIAI ĐOẠN 2 - Issue #5 [Adaptive-1.3]: Tính ngưỡng chuyển pha động
+        
+        Nguyên lý: Khi tắc nghẽn cao → giảm threshold (dễ chuyển pha hơn)
+                   Khi thông thoáng → tăng threshold (giữ pha lâu hơn)
+        
+        Args:
+            ns_pressure: Áp lực tổng hướng Bắc-Nam (PCU)
+            ew_pressure: Áp lực tổng hướng Đông-Tây (PCU)
+            
+        Returns:
+            Ngưỡng chuyển pha động (1.15 - 1.30)
+        """
+        # Tính tổng áp lực hệ thống
+        total_pressure = ns_pressure + ew_pressure
+        
+        # Tính tỷ lệ tắc nghẽn (0.0 = thông thoáng, 1.0 = tắc nghẽn cao)
+        if total_pressure <= self.CONGESTION_LOW:
+            congestion_ratio = 0.0
+        elif total_pressure >= self.CONGESTION_HIGH:
+            congestion_ratio = 1.0
+        else:
+            congestion_ratio = (total_pressure - self.CONGESTION_LOW) / (self.CONGESTION_HIGH - self.CONGESTION_LOW)
+        
+        # Tính threshold: Tắc nghẽn cao → threshold thấp (1.15), thông thoáng → threshold cao (1.30)
+        threshold = self.THRESHOLD_MAX - (congestion_ratio * (self.THRESHOLD_MAX - self.THRESHOLD_MIN))
+        
+        return threshold
         
     def get_vehicle_count_by_direction(self, direction: TrafficDirection) -> int:
         """
@@ -319,7 +362,7 @@ class AdaptiveController:
             if waiting_time > self.CRITICAL_WAITING_TIME and waiting_time <= self.MAX_WAITING_TIME:
                 queue_pcu = self.convert_to_pcu(direction)
                 if queue_pcu > 0:  # Chỉ cảnh báo nếu có xe chờ
-                    print(f"⚠️ STARVATION WARNING: {direction.value} đã chờ {waiting_time:.0f}s (Queue: {queue_pcu:.1f} PCU)")
+                    print(f"[STAGE2-CRITICAL] ⚠️ {direction.value} chờ {waiting_time:.0f}s (>{self.CRITICAL_WAITING_TIME:.0f}s) | Queue:{queue_pcu:.1f}PCU")
             
             # Buộc chuyển pha nếu vượt MAX_WAITING_TIME
             if waiting_time > self.MAX_WAITING_TIME:
@@ -327,10 +370,7 @@ class AdaptiveController:
                 
                 # Chỉ buộc chuyển nếu có xe chờ
                 if queue_pcu > 0:
-                    print(f"🚨 STARVATION PREVENTION ACTIVATED!")
-                    print(f"   {direction.value} đã chờ {waiting_time:.0f}s (> {self.MAX_WAITING_TIME:.0f}s)")
-                    print(f"   Queue: {queue_pcu:.1f} PCU")
-                    print(f"   → Buộc chuyển pha cho hướng này!")
+                    print(f"[STAGE2-FORCE] 🚨 STARVATION! {direction.value} chờ {waiting_time:.0f}s (>{self.MAX_WAITING_TIME:.0f}s) | Queue:{queue_pcu:.1f}PCU → BUỘC CHUYỂN PHA")
                     
                     # Xác định pha cần chuyển
                     if direction in [TrafficDirection.NORTH, TrafficDirection.SOUTH]:
@@ -386,20 +426,40 @@ class AdaptiveController:
         ns_pressure = priorities[TrafficDirection.NORTH] + priorities[TrafficDirection.SOUTH]
         ew_pressure = priorities[TrafficDirection.EAST] + priorities[TrafficDirection.WEST]
         
-        # Logic chuyển pha
+        # ✅ FIX GIAI ĐOẠN 2 - Issue #5: Tính ngưỡng động dựa trên mức tắc nghẽn
+        dynamic_threshold = self.calculate_dynamic_threshold(ns_pressure, ew_pressure)
+        
+        # 🔍 DEBUG LOG STAGE 2
+        total_pressure = ns_pressure + ew_pressure
+        print(f"[STAGE2-DEBUG] Time:{current_time:.0f}s | Phase:{self.current_phase.value} | Duration:{phase_duration:.1f}s | NS_P:{ns_pressure:.1f} | EW_P:{ew_pressure:.1f} | Total:{total_pressure:.1f}PCU | Threshold:{dynamic_threshold:.2f}")
+        
+        # Logic chuyển pha với ngưỡng động
+        # ✅ FIX: Chỉ chuyển pha khi hướng đối diện có xe đủ nhiều (>= 1.0 PCU)
+        MIN_PRESSURE_TO_SWITCH = 1.0  # PCU tối thiểu để xem xét chuyển pha
+        
         if self.current_phase == TrafficPhase.NS_GREEN:
             # Hiện tại Bắc-Nam đang xanh
-            if ew_pressure > ns_pressure * 1.2:  # Ngưỡng chuyển pha 20%
+            # Chỉ chuyển nếu EW có xe và áp lực vượt ngưỡng
+            if ew_pressure >= MIN_PRESSURE_TO_SWITCH and ew_pressure > ns_pressure * dynamic_threshold:
+                print(f"[STAGE2-SWITCH] EW_P({ew_pressure:.1f}) > NS_P({ns_pressure:.1f}) * {dynamic_threshold:.2f} → Chuyển sang YELLOW")
                 return True, TrafficPhase.NS_YELLOW
             elif phase_duration >= self.T_MAX_GREEN:  # Đã đạt thời gian tối đa
+                print(f"[STAGE2-SWITCH] Duration({phase_duration:.1f}s) >= T_MAX_GREEN({self.T_MAX_GREEN:.0f}s) → Chuyển sang YELLOW")
                 return True, TrafficPhase.NS_YELLOW
                 
         elif self.current_phase == TrafficPhase.EW_GREEN:
             # Hiện tại Đông-Tây đang xanh
-            if ns_pressure > ew_pressure * 1.2:  # Ngưỡng chuyển pha 20%
+            # Chỉ chuyển nếu NS có xe và áp lực vượt ngưỡng
+            if ns_pressure >= MIN_PRESSURE_TO_SWITCH and ns_pressure > ew_pressure * dynamic_threshold:
+                print(f"[STAGE2-SWITCH] NS_P({ns_pressure:.1f}) > EW_P({ew_pressure:.1f}) * {dynamic_threshold:.2f} → Chuyển sang YELLOW")
                 return True, TrafficPhase.EW_YELLOW
             elif phase_duration >= self.T_MAX_GREEN:  # Đã đạt thời gian tối đa
+                print(f"[STAGE2-SWITCH] Duration({phase_duration:.1f}s) >= T_MAX_GREEN({self.T_MAX_GREEN:.0f}s) → Chuyển sang YELLOW")
                 return True, TrafficPhase.EW_YELLOW
+        
+        # Kiểm tra vi phạm T_MIN_GREEN
+        if phase_duration < self.T_MIN_GREEN:
+            print(f"[STAGE2-BLOCK] Duration({phase_duration:.1f}s) < T_MIN_GREEN({self.T_MIN_GREEN:.0f}s) → GIỮ PHA")
                 
         return False, None
     

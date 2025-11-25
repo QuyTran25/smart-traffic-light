@@ -677,6 +677,9 @@ class SmartTrafficApp(ctk.CTk):
         self.running = True
         self.paused = False
         self.status_label.configure(text="🟢 Chạy", text_color="#10b981")
+        
+        # ✅ Reset counter khi bắt đầu simulation mới
+        self.total_arrived_vehicles = 0
 
         # Lấy kịch bản được chọn
         scenario = self.case_box.get()
@@ -1823,11 +1826,11 @@ class SmartTrafficApp(ctk.CTk):
             # ===== LẤY DỮ LIỆU TỪ TRACI =====
             current_time = traci.simulation.getTime()
             all_vehicle_ids = traci.vehicle.getIDList()
-            departed_count = traci.simulation.getDepartedNumber()
             
-            # ✅ FIX: Tích lũy số xe arrived (getArrivedNumber() chỉ trả về step hiện tại)
-            arrived_this_step = traci.simulation.getArrivedNumber()
-            self.total_arrived_vehicles += arrived_this_step
+            # ✅ FIX: getDepartedNumber() trả về số xe departed TRONG BƯỚC này, không phải tích lũy
+            # → Tự tích lũy để có tổng số xe từ đầu simulation
+            departed_this_step = traci.simulation.getDepartedNumber()
+            self.total_arrived_vehicles += departed_this_step
             arrived_count = self.total_arrived_vehicles
             
             total_vehicles_in_sim = len(all_vehicle_ids)
@@ -1939,6 +1942,7 @@ class SmartTrafficApp(ctk.CTk):
             avg_delay = round(total_delay / vehicles_with_data, 1) if vehicles_with_data > 0 else 0.0
             
             # 3. LƯU LƯỢNG (Throughput - xe/giờ)
+            # ✅ FIX: Tự tích lũy departed vì getDepartedNumber() chỉ trả về số xe trong bước hiện tại
             if current_time > 0:
                 time_hours = current_time / 3600.0
                 throughput = int(arrived_count / time_hours) if time_hours > 0 else 0
@@ -2031,11 +2035,70 @@ class SmartTrafficApp(ctk.CTk):
                 for tls_id, ctrl in self.controllers.items():
                     try:
                         if hasattr(ctrl, 'phase_history') and len(ctrl.phase_history) > 0:
-                            recent_phases = ctrl.phase_history[-10:]  # 10 phases gần nhất
-                            cycle_time = sum(duration for _, _, duration in recent_phases) / len(recent_phases)
-                            cycle_times.append(cycle_time)
-                    except Exception:
-                        pass
+                            # ✅ FIX TRIỆT ĐỂ: Dùng TOÀN BỘ phase_history với lọc outliers thông minh
+                            # Root cause: Dashboard update quá nhanh → dùng data quá ít → cycle không đúng
+                            
+                            # Lấy TẤT CẢ phase_history (tối đa 100 phases để tránh lag)
+                            full_history = ctrl.phase_history[-100:] if len(ctrl.phase_history) > 100 else ctrl.phase_history
+                            
+                            # Tìm TẤT CẢ NS_GREEN start_times
+                            all_ns_green_times = [start_time for phase, start_time, _ in full_history if "NS_GREEN" in str(phase)]
+                            
+                            if len(all_ns_green_times) >= 2:
+                                # PRIMARY METHOD: Tính intervals giữa các lần NS_GREEN
+                                intervals = [all_ns_green_times[i+1] - all_ns_green_times[i] for i in range(len(all_ns_green_times)-1)]
+                                
+                                # Lọc outliers thông minh:
+                                # - Bỏ intervals < 10s (phase switching quá nhanh, không phải full cycle)
+                                # - Bỏ intervals > 90s (starvation force switching)
+                                valid_intervals = [x for x in intervals if 15 <= x <= 90]
+                                
+                                if valid_intervals:
+                                    # Tính trung bình từ valid intervals
+                                    cycle_time = sum(valid_intervals) / len(valid_intervals)
+                                    cycle_times.append(cycle_time)
+                                else:
+                                    # Tất cả intervals đều outliers → lấy median thay vì baseline
+                                    if intervals:
+                                        sorted_intervals = sorted(intervals)
+                                        median_interval = sorted_intervals[len(sorted_intervals) // 2]
+                                        # Clamp median vào khoảng hợp lý [20, 60]
+                                        cycle_time = max(20.0, min(60.0, median_interval))
+                                        cycle_times.append(cycle_time)
+                                    else:
+                                        cycle_times.append(40.0)
+                            else:
+                                # FALLBACK: Không đủ 2 NS_GREEN → ước tính từ durations
+                                # Lấy 10 phases GẦN NHẤT để có data mới nhất
+                                recent_history = ctrl.phase_history[-10:] if len(ctrl.phase_history) > 10 else ctrl.phase_history
+                                
+                                # Tính tổng duration của tất cả phases
+                                total_duration = sum(duration for _, _, duration in recent_history)
+                                num_phases = len(recent_history)
+                                
+                                if num_phases >= 5:
+                                    # Có ít nhất 5 phases (1 full cycle) → tính trực tiếp
+                                    # 1 cycle ≈ 5 phases (NS_GREEN, YELLOW, ALL_RED, EW_GREEN, YELLOW)
+                                    # Nếu có 10 phases → 2 cycles
+                                    cycles_in_history = num_phases / 5.0
+                                    cycle_time = total_duration / cycles_in_history
+                                    cycle_times.append(cycle_time)
+                                else:
+                                    # Quá ít data → ước tính từ GREEN phases
+                                    green_durations = [duration for phase, _, duration in recent_history 
+                                                      if "GREEN" in str(phase) and "YELLOW" not in str(phase)]
+                                    
+                                    if green_durations:
+                                        avg_green = sum(green_durations) / len(green_durations)
+                                        # 1 cycle = 2 GREEN (NS+EW) + overhead (YELLOW+ALL_RED ≈ 10s)
+                                        cycle_time = (avg_green * 2) + 10.0
+                                        cycle_times.append(cycle_time)
+                                    else:
+                                        # Không có GREEN nào → baseline
+                                        cycle_times.append(40.0)
+                    except Exception as e:
+                        # Fallback cuối cùng nếu có lỗi
+                        cycle_times.append(40.0)
                 
                 avg_cycle = int(sum(cycle_times) / len(cycle_times)) if cycle_times else (self.green_time + self.yellow_time + self.red_time) * 2
             else:

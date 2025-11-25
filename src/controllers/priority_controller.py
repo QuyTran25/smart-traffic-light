@@ -72,7 +72,7 @@ class PriorityController:
         self.ETA_THRESHOLD = 12.0          # Ngưỡng ETA để kích hoạt ưu tiên (giây)
         self.CONFIRMATION_WINDOW = 1.0     # Thời gian xác nhận (giây)
         self.CONFIRMATION_COUNT = 2        # Số lần xác nhận cần thiết
-        self.PREEMPT_MIN_GREEN = 8.0       # Thời gian xanh tối thiểu cho ưu tiên (giây)
+        self.PREEMPT_MIN_GREEN = 15.0      # Thời gian xanh tối thiểu cho ưu tiên (giây) - phải >= T_MIN_GREEN của Adaptive
         self.SAFE_MIN_GREEN_BEFORE = 4.0   # Thời gian xanh tối thiểu trước khi cắt (giây)
         self.YELLOW_DURATION = 3.0         # Thời gian vàng (giây)
         self.ALL_RED_EMERGENCY = 3.0       # Thời gian All-Red khẩn cấp (giây)
@@ -405,6 +405,13 @@ class PriorityController:
                     if not self.is_emergency_vehicle(vehicle_id):
                         continue
                     
+                    # ✅ CRITICAL FIX: Chỉ xét xe ưu tiên đến ngã tư mà controller này quản lý
+                    # Mỗi PriorityController chỉ xử lý xe đến ngã tư của mình (J1, J4, ...)
+                    # Format vehicle_id: priority_DEFAULT_north_J1_123 hoặc priority_DEFAULT_north_J4_456
+                    junction_marker = f"_{self.junction_id}_"
+                    if junction_marker not in vehicle_id:
+                        continue  # Xe này đi đến ngã tư khác, không phải ngã tư của controller này
+                    
                     print(f"🚨 Phát hiện xe ưu tiên: {vehicle_id}")
                     
                     # Tính khoảng cách đến ngã tư
@@ -628,17 +635,16 @@ class PriorityController:
             'distance': rejected_vehicle.distance
         })
         
-        # Điều chỉnh adaptive controller (nếu có)
+        # ✅ FIX STAGE 2: KHÔNG điều chỉnh adaptive params trong emergency mode
+        # Lý do: Ghi đè T_MIN_GREEN từ 15s xuống 12s gây ra chu kỳ ngắn và starvation
+        # Adaptive Controller đã có starvation prevention (60s), không cần can thiệp thêm
         if self.adaptive_controller:
             try:
-                # Tăng min_green để ổn định, giảm max_green để luân chuyển nhanh
-                self.adaptive_controller.set_emergency_params(
-                    min_green=12.0,
-                    max_green=90.0
-                )
-                print(f"   Điều chỉnh adaptive: min=12s, max=90s")
+                # KHÔNG ghi đè min_green nữa - giữ nguyên 15s từ Stage 2
+                # Chỉ log để theo dõi
+                print(f"   ⚠️ Emergency mode: GIỮ NGUYÊN adaptive params (min={self.adaptive_controller.T_MIN_GREEN:.0f}s, max={self.adaptive_controller.T_MAX_GREEN:.0f}s)")
             except Exception as e:
-                print(f"⚠️ Không thể điều chỉnh adaptive params: {e}")
+                print(f"⚠️ Không thể kiểm tra adaptive params: {e}")
     
     def should_respect_min_green(self) -> bool:
         """
