@@ -104,6 +104,20 @@ class AdaptiveController:
         self.CRITICAL_WAITING_TIME = 40.0  # Thời gian cảnh báo (giây)
         self.last_green_time: Dict[TrafficDirection, float] = {}  # Lần xanh cuối cho mỗi hướng
         
+        # ✅ GIAI ĐOẠN 5 - Issue #13: Tham số cho công thức pressure mới
+        self.PRESSURE_WEIGHT_QUEUE = 0.5      # Trọng số cho số xe (50%)
+        self.PRESSURE_WEIGHT_OCCUPANCY = 0.3  # Trọng số cho mật độ (30%)
+        self.PRESSURE_WEIGHT_SPEED = 0.2      # Trọng số cho tốc độ (20%)
+        self.QUEUE_MAX = 20.0                 # Queue tối đa để chuẩn hóa (PCU)
+        self.SPEED_LIMIT = 40.0               # Tốc độ giới hạn để chuẩn hóa (km/h)
+        
+        # ✅ GIAI ĐOẠN 5 - Issue #14: Tracking cho prediction
+        self.ema_queue: Dict[str, float] = {}       # EMA queue cho mỗi hướng
+        self.prev_ema: Dict[str, float] = {}        # EMA trước đó
+        self.current_queue: Dict[str, float] = {}   # Queue hiện tại
+        self.EMA_ALPHA = 0.3                        # Trọng số cho EMA (30% mới, 70% cũ)
+        self.PREDICTION_LOOKAHEAD = 10.0            # Dự đoán 10 giây tới
+        
         # Khởi tạo last_green_time
         for direction in TrafficDirection:
             self.last_green_time[direction] = 0.0
@@ -237,24 +251,91 @@ class AdaptiveController:
     
     def calculate_pressure(self, direction: TrafficDirection) -> float:
         """
-        Tính điểm áp lực cho một hướng
+        ✅ GIAI ĐOẠN 5 - Issue #13: Tính điểm áp lực cho một hướng (IMPROVED)
         
-        Công thức: P = α × Queue_length(PCU)
+        Công thức mới (Weighted Normalized Score):
+        P = w1 × (Queue/Queue_max) + w2 × Occupancy + w3 × (1 - Speed/Speed_limit)
+        
+        Trong đó:
+        - w1 = 0.5 (Queue): Số lượng xe - quan trọng nhất
+        - w2 = 0.3 (Occupancy): Mật độ thực tế (% đường bị chiếm)
+        - w3 = 0.2 (Speed Factor): Phát hiện tắc nghẽn (tốc độ càng chậm, áp lực càng cao)
         
         Args:
             direction: Hướng cần tính áp lực
             
         Returns:
-            Điểm áp lực (float)
+            Điểm áp lực chuẩn hóa (0.0 - 1.0+)
         """
-        queue_pcu = self.convert_to_pcu(direction)
-        pressure = self.ALPHA * queue_pcu
-        
-        # Lưu lịch sử để phân tích
-        self.queue_history[direction].append(queue_pcu)
-        self.pressure_history[direction].append(pressure)
-        
-        return pressure
+        try:
+            queue_pcu = self.convert_to_pcu(direction)
+            edges = self.direction_edges.get(direction, [])
+            
+            # --- 1. NORMALIZED QUEUE (0-1) ---
+            norm_queue = min(queue_pcu / self.QUEUE_MAX, 1.0)
+            
+            # --- 2. OCCUPANCY (0-1) ---
+            # Occupancy = % lòng đường bị chiếm (detector tự động tính)
+            total_occupancy = 0.0
+            edge_count = 0
+            
+            for edge in edges:
+                try:
+                    occupancy = traci.edge.getLastStepOccupancy(edge)
+                    total_occupancy += occupancy
+                    edge_count += 1
+                except:
+                    continue
+            
+            avg_occupancy = total_occupancy / max(edge_count, 1)
+            
+            # --- 3. SPEED FACTOR (0-1) ---
+            # Tốc độ càng chậm (tắc nghẽn) → Factor càng cao → Áp lực càng lớn
+            total_speed = 0.0
+            vehicle_count = 0
+            
+            for edge in edges:
+                try:
+                    vehicles = traci.edge.getLastStepVehicleIDs(edge)
+                    for veh_id in vehicles:
+                        try:
+                            speed = traci.vehicle.getSpeed(veh_id) * 3.6  # m/s → km/h
+                            total_speed += speed
+                            vehicle_count += 1
+                        except:
+                            continue
+                except:
+                    continue
+            
+            avg_speed = total_speed / max(vehicle_count, 1) if vehicle_count > 0 else self.SPEED_LIMIT
+            norm_speed_factor = 1.0 - min(avg_speed / self.SPEED_LIMIT, 1.0)
+            
+            # --- 4. WEIGHTED PRESSURE ---
+            pressure = (
+                self.PRESSURE_WEIGHT_QUEUE * norm_queue +
+                self.PRESSURE_WEIGHT_OCCUPANCY * avg_occupancy +
+                self.PRESSURE_WEIGHT_SPEED * norm_speed_factor
+            )
+            
+            # Lưu lịch sử để phân tích
+            self.queue_history[direction].append(queue_pcu)
+            self.pressure_history[direction].append(pressure)
+            
+            # Update current_queue cho prediction
+            direction_name = direction.value
+            self.current_queue[direction_name] = queue_pcu
+            
+            # Debug log (có thể tắt sau)
+            if queue_pcu > 0 or avg_occupancy > 0.1:
+                print(f"[PRESSURE-DEBUG] {direction.value}: Queue={queue_pcu:.1f} PCU, Occ={avg_occupancy:.2f}, Speed={avg_speed:.1f}km/h → P={pressure:.3f}")
+            
+            return pressure
+            
+        except Exception as e:
+            print(f"❌ Lỗi khi tính pressure hướng {direction.value}: {e}")
+            # Fallback về công thức cũ
+            queue_pcu = self.convert_to_pcu(direction)
+            return self.ALPHA * queue_pcu
     
     def calculate_green_time(self, direction: TrafficDirection) -> float:
         """
@@ -719,6 +800,70 @@ class AdaptiveController:
             print(f"❌ Lỗi khi tính thống kê: {e}")
             return {'error': str(e)}
     
+    def predict_backlog_trend(self, direction: str, lookahead_time: float = None) -> float:
+        """
+        ✅ GIAI ĐOẠN 5 - Issue #14: Dự đoán xu hướng backlog (queue) trong tương lai gần
+        
+        Sử dụng Rate of Change (RoC) kết hợp Exponential Moving Average (EMA)
+        để dự đoán queue length sau 10 giây.
+        
+        Logic:
+        1. Tính EMA của queue để làm mượt nhiễu (smoothing)
+        2. Tính Rate of Change (đạo hàm) = (EMA_current - EMA_prev) / time_delta
+        3. Dự đoán: Queue_predicted = Queue_current + (RoC × lookahead_time)
+        
+        Args:
+            direction: Hướng cần dự đoán ("Bắc", "Nam", "Đông", "Tây")
+            lookahead_time: Thời gian dự đoán tới (giây), mặc định 10s
+            
+        Returns:
+            Queue dự đoán (PCU) - Luôn >= 0
+        """
+        if lookahead_time is None:
+            lookahead_time = self.PREDICTION_LOOKAHEAD
+        
+        # Lấy queue hiện tại
+        current_q = self.current_queue.get(direction, 0.0)
+        
+        # --- 1. EXPONENTIAL MOVING AVERAGE (EMA) để smooth ---
+        # EMA = α × current + (1 - α) × EMA_prev
+        # α = 0.3 nghĩa là 30% trọng số cho giá trị mới, 70% cho giá trị cũ
+        if direction not in self.ema_queue:
+            # Lần đầu tiên, khởi tạo EMA = current
+            self.ema_queue[direction] = current_q
+            self.prev_ema[direction] = current_q
+            return current_q  # Chưa đủ dữ liệu để dự đoán
+        
+        # Tính EMA hiện tại
+        ema_current = self.EMA_ALPHA * current_q + (1 - self.EMA_ALPHA) * self.ema_queue[direction]
+        
+        # --- 2. RATE OF CHANGE (RoC) ---
+        # Giả sử hàm này được gọi mỗi 5s (1 simulation step)
+        time_delta = 5.0  # Khoảng thời gian giữa 2 lần gọi (giây)
+        prev_ema = self.prev_ema.get(direction, ema_current)
+        
+        # Tốc độ thay đổi queue (xe/giây)
+        delta_rate = (ema_current - prev_ema) / time_delta
+        
+        # --- 3. DỰ ĐOÁN ---
+        # Queue sau 10s = Queue hiện tại + (Tốc độ thay đổi × 10s)
+        predicted_q = current_q + (delta_rate * lookahead_time)
+        
+        # Giới hạn: Queue không thể âm
+        predicted_q = max(0.0, predicted_q)
+        
+        # --- 4. UPDATE HISTORY ---
+        self.prev_ema[direction] = ema_current
+        self.ema_queue[direction] = ema_current
+        
+        # Debug log
+        if abs(delta_rate) > 0.1:  # Chỉ log khi có thay đổi đáng kể
+            trend_icon = "📈" if delta_rate > 0 else "📉" if delta_rate < 0 else "➡️"
+            print(f"[PREDICT-DEBUG] {direction}: Current={current_q:.1f} PCU, RoC={delta_rate:+.2f} xe/s {trend_icon}")
+            print(f"   → Dự đoán sau {lookahead_time:.0f}s: {predicted_q:.1f} PCU")
+        
+        return predicted_q
+    
     def add_green_debt(self, direction: str, debt_time: float):
         """
         Thêm 'nợ' thời gian xanh cho một hướng
@@ -835,12 +980,21 @@ class AdaptiveController:
     
     def calculate_backlog_compensation(self, direction: str) -> float:
         """
-        SC6: Tính thời gian bù backlog dựa trên mức độ nghiêm trọng
+        ✅ GIAI ĐOẠN 5 - Issue #15: Tính thời gian bù backlog (SIMPLIFIED)
         
-        Công thức thông minh:
-        - Severity thấp (0-30): Bù 20-30% debt
-        - Severity trung bình (30-60): Bù 40-60% debt
-        - Severity cao (60-100): Bù 70-100% debt + bonus
+        Công thức tuyến tính đơn giản (Linear Dynamic Factor):
+        Compensation = Debt × Factor
+        Factor = Base + (α × Queue/Queue_threshold)
+        
+        Ưu điểm:
+        - Mượt mà, không nhảy bậc
+        - Dễ debug và maintain
+        - Chỉ 4 dòng code thay vì 20+ dòng if-else
+        
+        Quy tắc:
+        - Base: 0.6 (Luôn trả ít nhất 60% nợ)
+        - Queue Factor: Càng đông xe càng trả nợ nhanh (mỗi 10 PCU thì +20%)
+        - Cap: Factor tối đa 1.2 (trả nợ + lãi 20%)
         
         Args:
             direction: Hướng cần bù
@@ -848,35 +1002,40 @@ class AdaptiveController:
         Returns:
             Thời gian bù (giây)
         """
-        severity = self.get_backlog_severity(direction)
         debt = self.green_debts.get(direction, 0.0)
         
-        if debt <= 0 or severity <= 0:
+        if debt <= 0:
             return 0.0
         
-        # Tính tỷ lệ bù dựa trên severity
-        if severity < 30:
-            # Backlog nhẹ: Bù từ từ (20-30%)
-            compensation_rate = 0.20 + (severity / 30.0) * 0.10
-        elif severity < 60:
-            # Backlog trung bình: Bù nhanh hơn (40-60%)
-            compensation_rate = 0.40 + ((severity - 30) / 30.0) * 0.20
-        else:
-            # Backlog nghiêm trọng: Bù mạnh (70-100%)
-            compensation_rate = 0.70 + ((severity - 60) / 40.0) * 0.30
+        # Lấy queue hiện tại
+        queue = self.current_queue.get(direction, 0.0)
         
-        compensation = debt * compensation_rate
+        # ✅ CÔNG THỨC TUYẾN TÍNH
+        # Base: 0.6 (60% luôn được trả)
+        # Bonus: +0.2 cho mỗi 10 PCU (tối đa 1.2)
+        # Ví dụ:
+        #   Queue = 0  PCU → Factor = 0.6 (60%)
+        #   Queue = 5  PCU → Factor = 0.7 (70%)
+        #   Queue = 10 PCU → Factor = 0.8 (80%)
+        #   Queue = 20 PCU → Factor = 1.0 (100%)
+        #   Queue = 30+PCU → Factor = 1.2 (120% - CAP)
         
-        # Bonus cho backlog cực nghiêm trọng (severity > 80)
-        if severity > 80:
-            bonus = min((severity - 80) / 20.0 * 10.0, 10.0)  # Tối đa +10s
-            compensation += bonus
-            print(f"⚠️ {direction}: Backlog CỰC NGHIÊM TRỌNG (severity={severity:.0f}) → Bonus +{bonus:.1f}s")
+        dynamic_factor = 0.6 + (0.2 * (queue / 10.0))
         
-        # Giới hạn compensation tối đa 20s/chu kỳ
-        compensation = min(compensation, 20.0)
+        # Giới hạn factor trong khoảng [0.6, 1.2]
+        final_factor = max(0.6, min(dynamic_factor, 1.2))
         
-        return compensation
+        # Tính compensation
+        compensation_time = debt * final_factor
+        
+        # Giới hạn tối đa 20s/chu kỳ (tránh bù quá nhiều)
+        compensation_time = min(compensation_time, 20.0)
+        
+        # Debug log
+        if compensation_time > 0:
+            print(f"💰 COMPENSATION: {direction} Queue={queue:.1f} PCU, Factor={final_factor:.2f} → Bù {compensation_time:.1f}s (Nợ: {debt:.1f}s)")
+        
+        return compensation_time
     
     def get_all_backlog_report(self) -> Dict[str, Dict]:
         """
