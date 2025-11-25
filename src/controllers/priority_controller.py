@@ -949,6 +949,11 @@ class PriorityController:
     
     def handle_normal_state(self):
         """Xử lý trạng thái NORMAL"""
+        # ✅ FIX: Tracking xe đã qua ngã tư (cho xe không bị kẹt)
+        current_time = traci.simulation.getTime()
+        if self.confirmed_vehicles:
+            self._track_confirmed_vehicles(current_time)
+        
         # Quét tìm xe ưu tiên
         detected_vehicles = self.scan_for_emergency_vehicles()
         
@@ -1025,33 +1030,13 @@ class PriorityController:
         
         # --- BƯỚC 3: Hiển thị thông tin phân tích ---
         print(f"=" * 60)
-        print(f"🔍 KIỂM TRA XE BỊ KẸT")
+        print(f"🔍 PHÂN TÍCH XE ƯU TIÊN")
         print(f"   Xe: {priority_vehicle.vehicle_id}")
         print(f"   Khoảng cách: {priority_vehicle.distance:.1f}m")
         print(f"   Tốc độ: {priority_vehicle.speed:.1f}m/s")
         print(f"   ETA: {priority_vehicle.eta:.1f}s")
         print(f"   Bị kẹt: {'CÓ' if is_blocked else 'KHÔNG'} - {block_reason}")
-        
-        if not is_blocked:
-            # Xe KHÔNG bị kẹt → Có thể tự vượt đèn đỏ
-            print(f"✅ Xe ưu tiên KHÔNG bị kẹt → TỰ VƯỢT được")
-            print(f"   → KHÔNG kích hoạt ưu tiên (tiết kiệm chu kỳ đèn)")
-            print(f"=" * 60)
-            
-            # Quay về NORMAL, theo dõi thôi (không can thiệp)
-            self.transition_to_state(PreemptionState.NORMAL, {
-                'reason': 'emergency_vehicle_not_blocked',
-                'vehicle_id': priority_vehicle.vehicle_id,
-                'can_self_pass': True
-            })
-            
-            # Xóa khỏi confirmed_vehicles để không xử lý nữa
-            if priority_vehicle.vehicle_id in self.confirmed_vehicles:
-                del self.confirmed_vehicles[priority_vehicle.vehicle_id]
-            
-            return
-        
-        print(f"⚠️ Xe ưu tiên BỊ KẸT → CẦN chuyển đèn xanh")
+        print(f"🚨 LUÔN kích hoạt ưu tiên (dù xe có bị kẹt hay không)")
         print(f"=" * 60)
         
         # --- BƯỚC 3: ETA ≤ 12s → Kiểm tra rate limit (SC6) ---
@@ -1724,7 +1709,11 @@ class PriorityController:
         
         # --- BƯỚC 7: Dọn dẹp và quay về NORMAL ---
         self.detected_vehicles.clear()
-        self.confirmed_vehicles.clear()
+        # ✅ FIX CLEARANCE TIME: KHÔNG xóa confirmed_vehicles ở đây!
+        # Để _track_confirmed_vehicles() tự phát hiện xe qua ngã tư và tính clearance time
+        # self.confirmed_vehicles.clear()  # ❌ XÓA DÒNG NÀY
+        print(f"   ℹ️ Giữ {len(self.confirmed_vehicles)} xe trong confirmed_vehicles để track clearance time")
+        
         self.priority_vehicle = None
         self.preemption_start_time = 0.0
         self._preemption_counted = False

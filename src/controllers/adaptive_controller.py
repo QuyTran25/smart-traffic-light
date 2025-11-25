@@ -47,8 +47,9 @@ class AdaptiveController:
         # Tham số cấu hình theo tài liệu
         # ✅ FIX GIAI ĐOẠN 2 - Issue #2 [Adaptive-1.1]: Tăng T_MIN_GREEN 10s → 15s để đảm bảo thời gian xanh tối thiểu tuyệt đối
         self.T_MIN_GREEN = 15.0    # Thời gian xanh tối thiểu (giây) - Giảm 30% số lần dừng sớm
-        # ✅ FIX GIAI ĐOẠN 1 - Lỗi #3: Giảm T_MAX_GREEN 120s → 90s để giảm thời gian chờ tối đa
-        self.T_MAX_GREEN = 90.0    # Thời gian xanh tối đa (giây) 
+        # ✅ FIX CHU KÌ VƯỢT NGƯỠNG: Giảm T_MAX_GREEN 90s → 60s để tránh chu kì quá dài
+        self.T_MAX_GREEN = 60.0    # Thời gian xanh tối đa (giây) - Giảm từ 90s
+        self.MAX_CYCLE_TIME = 80.0 # Thời gian chu kì tối đa (giây) - Giới hạn toàn bộ chu kì
         self.ALPHA = 0.5           # Hệ số áp lực (giây/PCU)
         self.YELLOW_DURATION = 3.0 # Thời gian vàng (giây)
         self.ALL_RED_BASE = 2.0    # Thời gian đỏ toàn bộ cơ bản (giây)
@@ -317,6 +318,13 @@ class AdaptiveController:
                 self.PRESSURE_WEIGHT_SPEED * norm_speed_factor
             )
             
+            # ✅ FIX: Fallback khi Occupancy/Speed = 0 (không có xe đang chạy)
+            # Nếu có queue nhưng pressure thấp → Dùng công thức cũ
+            # ✅ FIX CHU KÌ: Hạ ngưỡng 0.01 → 0.05 để fallback sớm hơn
+            if queue_pcu > 0 and pressure < 0.05:
+                pressure = self.ALPHA * queue_pcu
+                print(f"⚠️ [PRESSURE-FALLBACK] {direction.value}: Queue={queue_pcu:.1f} PCU nhưng Pressure={pressure:.3f} thấp → Dùng công thức cũ P={self.ALPHA * queue_pcu:.3f}")
+            
             # Lưu lịch sử để phân tích
             self.queue_history[direction].append(queue_pcu)
             self.pressure_history[direction].append(pressure)
@@ -325,9 +333,9 @@ class AdaptiveController:
             direction_name = direction.value
             self.current_queue[direction_name] = queue_pcu
             
-            # Debug log (có thể tắt sau)
-            if queue_pcu > 0 or avg_occupancy > 0.1:
-                print(f"[PRESSURE-DEBUG] {direction.value}: Queue={queue_pcu:.1f} PCU, Occ={avg_occupancy:.2f}, Speed={avg_speed:.1f}km/h → P={pressure:.3f}")
+            # Debug log (TẮT để giảm spam - chỉ bật khi debug)
+            # if queue_pcu > 5 or avg_occupancy > 0.3:
+            #     print(f"[PRESSURE-DEBUG] {direction.value}: Queue={queue_pcu:.1f} PCU, Occ={avg_occupancy:.2f}, Speed={avg_speed:.1f}km/h → P={pressure:.3f}")
             
             return pressure
             
@@ -544,9 +552,12 @@ class AdaptiveController:
         # ✅ FIX GIAI ĐOẠN 2 - Issue #5: Tính ngưỡng động dựa trên mức tắc nghẽn
         dynamic_threshold = self.calculate_dynamic_threshold(ns_pressure, ew_pressure)
         
+        # ✅ FIX CHU KÌ: Kiểm tra thời gian chu kì tổng thể
+        cycle_time = self.get_cycle_time()
+        
         # 🔍 DEBUG LOG STAGE 2
         total_pressure = ns_pressure + ew_pressure
-        print(f"[STAGE2-DEBUG] Time:{current_time:.0f}s | Phase:{self.current_phase.value} | Duration:{phase_duration:.1f}s | NS_P:{ns_pressure:.1f} | EW_P:{ew_pressure:.1f} | Total:{total_pressure:.1f}PCU | Threshold:{dynamic_threshold:.2f}")
+        print(f"[STAGE2-DEBUG] Time:{current_time:.0f}s | Phase:{self.current_phase.value} | Duration:{phase_duration:.1f}s | Cycle:{cycle_time:.0f}s | NS_P:{ns_pressure:.1f} | EW_P:{ew_pressure:.1f} | Total:{total_pressure:.1f}PCU | Threshold:{dynamic_threshold:.2f}")
         
         # Logic chuyển pha với ngưỡng động
         # ✅ FIX: Chỉ chuyển pha khi hướng đối diện có xe đủ nhiều (>= 1.0 PCU)
@@ -554,8 +565,12 @@ class AdaptiveController:
         
         if self.current_phase == TrafficPhase.NS_GREEN:
             # Hiện tại Bắc-Nam đang xanh
+            # ✅ FIX CHU KÌ: Buộc chuyển nếu chu kì quá dài (>MAX_CYCLE_TIME)
+            if cycle_time >= self.MAX_CYCLE_TIME:
+                print(f"[STAGE2-CYCLE-LIMIT] 🚨 Cycle({cycle_time:.0f}s) >= MAX_CYCLE_TIME({self.MAX_CYCLE_TIME:.0f}s) → BẮT BUỘC chuyển sang YELLOW")
+                return True, TrafficPhase.NS_YELLOW
             # Chỉ chuyển nếu EW có xe và áp lực vượt ngưỡng
-            if ew_pressure >= MIN_PRESSURE_TO_SWITCH and ew_pressure > ns_pressure * dynamic_threshold:
+            elif ew_pressure >= MIN_PRESSURE_TO_SWITCH and ew_pressure > ns_pressure * dynamic_threshold:
                 print(f"[STAGE2-SWITCH] EW_P({ew_pressure:.1f}) > NS_P({ns_pressure:.1f}) * {dynamic_threshold:.2f} → Chuyển sang YELLOW")
                 return True, TrafficPhase.NS_YELLOW
             elif phase_duration >= self.T_MAX_GREEN:  # Đã đạt thời gian tối đa
@@ -564,8 +579,12 @@ class AdaptiveController:
                 
         elif self.current_phase == TrafficPhase.EW_GREEN:
             # Hiện tại Đông-Tây đang xanh
+            # ✅ FIX CHU KÌ: Buộc chuyển nếu chu kì quá dài (>MAX_CYCLE_TIME)
+            if cycle_time >= self.MAX_CYCLE_TIME:
+                print(f"[STAGE2-CYCLE-LIMIT] 🚨 Cycle({cycle_time:.0f}s) >= MAX_CYCLE_TIME({self.MAX_CYCLE_TIME:.0f}s) → BẮT BUỘC chuyển sang YELLOW")
+                return True, TrafficPhase.EW_YELLOW
             # Chỉ chuyển nếu NS có xe và áp lực vượt ngưỡng
-            if ns_pressure >= MIN_PRESSURE_TO_SWITCH and ns_pressure > ew_pressure * dynamic_threshold:
+            elif ns_pressure >= MIN_PRESSURE_TO_SWITCH and ns_pressure > ew_pressure * dynamic_threshold:
                 print(f"[STAGE2-SWITCH] NS_P({ns_pressure:.1f}) > EW_P({ew_pressure:.1f}) * {dynamic_threshold:.2f} → Chuyển sang YELLOW")
                 return True, TrafficPhase.EW_YELLOW
             elif phase_duration >= self.T_MAX_GREEN:  # Đã đạt thời gian tối đa
@@ -800,6 +819,50 @@ class AdaptiveController:
             print(f"❌ Lỗi khi tính thống kê: {e}")
             return {'error': str(e)}
     
+    def get_cycle_time(self) -> float:
+        """
+        Tính thời gian chu kì hiện tại (cycle time) từ phase_history
+        
+        Cycle time = Thời gian từ NS_GREEN → NS_GREEN tiếp theo
+        hoặc từ EW_GREEN → EW_GREEN tiếp theo
+        
+        Returns:
+            Chu kì hiện tại (giây), trả về 0.0 nếu chưa đủ dữ liệu
+        """
+        try:
+            if len(self.phase_history) < 2:
+                return 0.0
+            
+            current_time = traci.simulation.getTime()
+            
+            # Tìm 2 lần NS_GREEN gần nhất để tính cycle
+            ns_green_times = []
+            for phase, start_time, duration in self.phase_history:
+                if phase == TrafficPhase.NS_GREEN:
+                    ns_green_times.append(start_time)
+            
+            # Nếu có ít nhất 2 lần NS_GREEN
+            if len(ns_green_times) >= 2:
+                # Cycle = interval giữa 2 lần NS_GREEN gần nhất
+                cycle = ns_green_times[-1] - ns_green_times[-2]
+                return cycle
+            
+            # Fallback: Tính cycle từ phase hiện tại
+            # Nếu đang trong phase xanh, tính từ lần xuất hiện trước đó
+            if self.current_phase in [TrafficPhase.NS_GREEN, TrafficPhase.EW_GREEN]:
+                # Tìm lần xuất hiện trước của phase này
+                same_phase_times = [start_time for phase, start_time, _ in self.phase_history 
+                                   if phase == self.current_phase]
+                if len(same_phase_times) >= 2:
+                    return same_phase_times[-1] - same_phase_times[-2]
+            
+            # Không đủ dữ liệu
+            return 0.0
+            
+        except Exception as e:
+            print(f"❌ Lỗi khi tính cycle time: {e}")
+            return 0.0
+    
     def predict_backlog_trend(self, direction: str, lookahead_time: float = None) -> float:
         """
         ✅ GIAI ĐOẠN 5 - Issue #14: Dự đoán xu hướng backlog (queue) trong tương lai gần
@@ -856,11 +919,11 @@ class AdaptiveController:
         self.prev_ema[direction] = ema_current
         self.ema_queue[direction] = ema_current
         
-        # Debug log
-        if abs(delta_rate) > 0.1:  # Chỉ log khi có thay đổi đáng kể
-            trend_icon = "📈" if delta_rate > 0 else "📉" if delta_rate < 0 else "➡️"
-            print(f"[PREDICT-DEBUG] {direction}: Current={current_q:.1f} PCU, RoC={delta_rate:+.2f} xe/s {trend_icon}")
-            print(f"   → Dự đoán sau {lookahead_time:.0f}s: {predicted_q:.1f} PCU")
+        # Debug log (TẮT để giảm spam)
+        # if abs(delta_rate) > 0.5:  # Chỉ log khi có thay đổi lớn
+        #     trend_icon = "📈" if delta_rate > 0 else "📉" if delta_rate < 0 else "➡️"
+        #     print(f"[PREDICT-DEBUG] {direction}: Current={current_q:.1f} PCU, RoC={delta_rate:+.2f} xe/s {trend_icon}")
+        #     print(f"   → Dự đoán sau {lookahead_time:.0f}s: {predicted_q:.1f} PCU")
         
         return predicted_q
     
@@ -1031,9 +1094,9 @@ class AdaptiveController:
         # Giới hạn tối đa 20s/chu kỳ (tránh bù quá nhiều)
         compensation_time = min(compensation_time, 20.0)
         
-        # Debug log
-        if compensation_time > 0:
-            print(f"💰 COMPENSATION: {direction} Queue={queue:.1f} PCU, Factor={final_factor:.2f} → Bù {compensation_time:.1f}s (Nợ: {debt:.1f}s)")
+        # Debug log (TẮT để giảm spam)
+        # if compensation_time > 5:  # Chỉ log khi bù >5s
+        #     print(f"💰 COMPENSATION: {direction} Queue={queue:.1f} PCU, Factor={final_factor:.2f} → Bù {compensation_time:.1f}s (Nợ: {debt:.1f}s)")
         
         return compensation_time
     

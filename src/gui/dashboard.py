@@ -1345,25 +1345,75 @@ class SmartTrafficApp(ctk.CTk):
         self.spawning_active = True
         
         def spawn_loop():
-            """Loop spawn xe ưu tiên ngẫu nhiên cho mode Mặc định"""
+            """Loop spawn xe ưu tiên ngẫu nhiên cho mode Mặc định
+            
+            ✅ FIX: Sử dụng SUMO TIME thay vì wallclock sleep
+            - Interval 200s = 200s SUMO time (không phụ thuộc tốc độ simulation)
+            - Check mỗi 0.5s wallclock để responsive với stop command
+            """
             import time
             import random
+            import traci
+            
+            # ✅ DELAY 60s SUMO TIME trước khi spawn lần đầu
+            self.log(f"⏳ Chờ 60s SUMO time trước khi spawn xe ưu tiên đầu tiên...")
+            
+            try:
+                start_time = traci.simulation.getTime()
+                # Đợi đến khi SUMO time >= start_time + 60
+                while self.spawning_active and traci.simulation.getTime() < start_time + 60:
+                    time.sleep(0.5)  # Check mỗi 0.5s
+                
+                if not self.spawning_active:
+                    self.log("🛑 Spawn loop stopped during initial delay")
+                    return
+                
+            except Exception as e:
+                self.log(f"⚠️ Lỗi trong initial delay: {e}")
+                return
             
             # Chỉ spawn từ 3 hướng có route (không có "east")
             all_directions = ["north", "south", "west"]
             
+            spawn_count = 0
+            last_spawn_time = traci.simulation.getTime()
+            
             while self.spawning_active:
                 try:
-                    # Chọn ngẫu nhiên một hướng
-                    direction = random.choice(all_directions)
-                    self.spawn_priority_vehicle(direction, "DEFAULT")
+                    # ✅ FIX: Check SUMO connection trước khi getTime()
+                    if not traci.isLoaded():
+                        self.log("🛑 SUMO đã đóng, dừng spawn loop")
+                        break
                     
-                    # Đợi interval giây
-                    time.sleep(interval)
+                    current_sumo_time = traci.simulation.getTime()
+                    
+                    # Kiểm tra đã đủ interval SUMO time chưa
+                    if current_sumo_time - last_spawn_time >= interval:
+                        spawn_count += 1
+                        self.log(f"🔄 [Spawn #{spawn_count}] SUMO time={current_sumo_time:.0f}s, spawning_active={self.spawning_active}")
+                        
+                        # Chọn ngẫu nhiên một hướng
+                        direction = random.choice(all_directions)
+                        spawned_ids = self.spawn_priority_vehicle(direction, "DEFAULT")
+                        
+                        if spawned_ids:
+                            self.log(f"✅ [Spawn #{spawn_count}] Spawned {len(spawned_ids)} vehicles at T={current_sumo_time:.0f}s")
+                        else:
+                            self.log(f"⚠️ [Spawn #{spawn_count}] No vehicles spawned at T={current_sumo_time:.0f}s")
+                        
+                        last_spawn_time = current_sumo_time
+                        self.log(f"⏱ [Spawn #{spawn_count}] Next spawn at T={last_spawn_time + interval:.0f}s (in {interval}s SUMO time)")
+                    
+                    # Sleep ngắn để không hog CPU, check lại mỗi 0.5s
+                    time.sleep(0.5)
                     
                 except Exception as e:
-                    self.log(f"⚠ Lỗi trong default spawn loop: {e}")
+                    import traceback
+                    self.log(f"⚠ Lỗi trong default spawn loop (spawn #{spawn_count}): {e}")
+                    self.log(f"📋 Traceback: {traceback.format_exc()}")
                     time.sleep(5)
+            
+            self.log(f"🛑 Spawn loop ended. spawning_active={self.spawning_active}, total spawns={spawn_count}")
         
         # Tạo và khởi chạy thread
         import threading
@@ -1630,10 +1680,12 @@ class SmartTrafficApp(ctk.CTk):
     def stop_priority_spawning(self):
         """Dừng việc spawn xe ưu tiên"""
         if self.spawning_active:
+            self.log("🛑 Đang dừng spawn thread...")
             self.spawning_active = False
-            if self.spawning_thread:
-                self.spawning_thread.join(timeout=2)
-            self.log("⏹ Đã dừng spawn xe ưu tiên")
+            # ⚠️ KHÔNG join() - để thread tự terminate trong sleep
+            # join(timeout=2) sẽ đợi 2s → nhưng thread đang sleep(200s) → wasted time
+            # Thread là daemon → sẽ tự terminate khi main program exit
+            self.log("⏹ Đã đặt spawning_active=False (thread sẽ tự terminate sau sleep)")
     
     def spawn_priority_vehicle(self, direction, scenario_id, depart_pos="base"):
         """Spawn một xe ưu tiên từ hướng chỉ định - ở CẢ 2 ngã tư (J1 và J4)
@@ -2135,14 +2187,18 @@ class SmartTrafficApp(ctk.CTk):
                     for junction_id, priority_ctrl in self.priority_controllers.items():
                         if hasattr(priority_ctrl, 'clearance_times') and priority_ctrl.clearance_times:
                             clearance_times.extend(priority_ctrl.clearance_times)
+                            print(f"🔍 [DASHBOARD-DEBUG] {junction_id}: {len(priority_ctrl.clearance_times)} clearance times: {priority_ctrl.clearance_times}")
                     
                     # Tính trung bình thời gian giải phóng
                     if clearance_times:
                         first_kpi_value = round(sum(clearance_times) / len(clearance_times), 1)
+                        print(f"📊 [DASHBOARD-DEBUG] Avg clearance time: {first_kpi_value}s from {len(clearance_times)} vehicles")
                     else:
                         first_kpi_value = 0.0
+                        print(f"⚠️ [DASHBOARD-DEBUG] No clearance times available! priority_controllers={list(self.priority_controllers.keys())}")
                 else:
                     first_kpi_value = 0.0
+                    print(f"⚠️ [DASHBOARD-DEBUG] No priority_controllers available!")
 
             # === CẬP NHẬT GLOBAL KPI ===
             self.global_kpi_data = {
