@@ -28,19 +28,20 @@ class VehicleCounter:
         self.thread = None
         
         # Định nghĩa mapping giữa edge và hướng cho mỗi junction
+        # ✅ FIX: Đếm CẢ xe VÀO và xe RA cho mỗi hướng
         # Junction J1 tại tọa độ (0, 0)
         self.junction_edges = {
             "J1": {
-                "Bắc": ["-E1"],  # Xe từ phía Bắc vào (routes r5-r9)
-                "Nam": ["-E2"],  # Xe từ phía Nam vào (routes r10-r14)
-                "Đông": ["E3"],  # Xe từ phía Đông vào
-                "Tây": ["E0"],   # Xe từ phía Tây vào (routes r0-r4)
+                "Bắc": ["-E1", "E1"],  # VÀO: -E1 (từ J2), RA: E1 (đi J2)
+                "Nam": ["-E2", "E2"],  # VÀO: -E2 (từ J3), RA: E2 (đi J3)
+                "Đông": ["-E3", "E3"], # VÀO: -E3 (từ J4), RA: E3 (đi J4)
+                "Tây": ["E0", "-E0"],  # VÀO: E0 (từ J0), RA: -E0 (đi J0)
             },
             "J4": {
-                "Bắc": ["-E4"],  # Xe từ phía Bắc vào
-                "Nam": ["-E5"],  # Xe từ phía Nam vào
-                "Đông": ["-E6"], # Xe từ phía Đông vào
-                "Tây": ["-E3"],  # Xe từ phía Tây vào (từ J1)
+                "Bắc": ["-E4", "E4"],  # VÀO: -E4 (từ J5), RA: E4 (đi J5)
+                "Nam": ["-E5", "E5"],  # VÀO: -E5 (từ J6), RA: E5 (đi J6)
+                "Đông": ["-E6", "E6"], # VÀO: -E6 (từ J7), RA: E6 (đi J7)
+                "Tây": ["E3", "-E3"],  # VÀO: E3 (từ J1), RA: -E3 (đi J1)
             }
         }
         
@@ -95,18 +96,18 @@ class VehicleCounter:
     def auto_assign_directions(self, edges: list, junction_id: str):
         """Tự động gán edges vào các hướng Bắc/Nam/Đông/Tây"""
         if junction_id == "J1":
-            # Junction J1: Edges đi VÀO junction
-            bac = [e for e in edges if e == "-E1"]  # Từ J2 xuống J1 (Bắc)
-            nam = [e for e in edges if e == "-E2"]  # Từ J3 lên J1 (Nam)
-            dong = [e for e in edges if e == "-E3"]  # Từ J4 sang J1 (Đông)
-            tay = [e for e in edges if e == "E0"]   # Từ J0 sang J1 (Tây)
+            # ✅ Junction J1: Đếm CẢ xe VÀO và RA
+            bac = [e for e in edges if e in ["-E1", "E1"]]   # VÀO: -E1, RA: E1
+            nam = [e for e in edges if e in ["-E2", "E2"]]   # VÀO: -E2, RA: E2
+            dong = [e for e in edges if e in ["-E3", "E3"]]  # VÀO: -E3, RA: E3
+            tay = [e for e in edges if e in ["E0", "-E0"]]   # VÀO: E0, RA: -E0
         
         elif junction_id == "J4":
-            # Junction J4: Edges đi VÀO junction
-            bac = [e for e in edges if e == "-E4"]  # Từ J5 xuống J4 (Bắc)
-            nam = [e for e in edges if e == "-E5"]  # Từ J6 lên J4 (Nam)
-            dong = [e for e in edges if e == "-E6"]  # Từ J7 sang J4 (Đông)
-            tay = [e for e in edges if e == "E3"]   # Từ J1 sang J4 (Tây)
+            # ✅ Junction J4: Đếm CẢ xe VÀO và RA
+            bac = [e for e in edges if e in ["-E4", "E4"]]   # VÀO: -E4, RA: E4
+            nam = [e for e in edges if e in ["-E5", "E5"]]   # VÀO: -E5, RA: E5
+            dong = [e for e in edges if e in ["-E6", "E6"]]  # VÀO: -E6, RA: E6
+            tay = [e for e in edges if e in ["E3", "-E3"]]   # VÀO: E3, RA: -E3
         
         else:
             bac = nam = dong = tay = []

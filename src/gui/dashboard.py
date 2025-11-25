@@ -1989,8 +1989,19 @@ class SmartTrafficApp(ctk.CTk):
             
             # === TÍNH CÁC KPI TRUNG BÌNH ===
             
-            # 1. TỔNG XE (hiển thị số xe hiện tại)
-            total_vehicles = total_vehicles_in_sim
+            # 1. TỔNG XE (hiển thị số xe tại 2 ngã tư - khớp với VehicleCounter)
+            # ✅ FIX: Tính tổng từ vehicle_counts (tổng xe tại cả 2 ngã tư)
+            # Lý do: VehicleCounter đếm xe trên 4 edge VÀO mỗi ngã tư
+            # → Tổng = sum(Ngã tư 1) + sum(Ngã tư 2) phải khớp với "Tổng xe"
+            total_vehicles = 0
+            if vehicle_counts:
+                for junction_id in ["J1", "J4"]:
+                    if junction_id in vehicle_counts:
+                        total_vehicles += sum(vehicle_counts[junction_id].values())
+            
+            # Fallback nếu không có VehicleCounter
+            if total_vehicles == 0:
+                total_vehicles = total_vehicles_in_sim
             
             # 2. ĐỘ TRỄ TB (Average Delay - s/xe)
             avg_delay = round(total_delay / vehicles_with_data, 1) if vehicles_with_data > 0 else 0.0
